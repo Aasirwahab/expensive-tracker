@@ -27,6 +27,15 @@ export async function createProduct(
     return { error: "Only the owner can add products." };
   }
 
+  // Product photo arrives as a small resized data URL from the browser.
+  const rawImage = formData.get("imageUrl");
+  const imageUrl =
+    typeof rawImage === "string" &&
+    rawImage.startsWith("data:image/") &&
+    rawImage.length <= 300_000
+      ? rawImage
+      : null;
+
   const parsed = schema.safeParse({
     name: formData.get("name"),
     sku: formData.get("sku") || undefined,
@@ -55,6 +64,7 @@ export async function createProduct(
       data: {
         businessId,
         name,
+        imageUrl,
         sku: sku ? sku : null,
         currentCost,
         defaultPrice: defaultPrice ?? null,

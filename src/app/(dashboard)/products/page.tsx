@@ -77,7 +77,23 @@ export default async function ProductsPage() {
                       key={p.id}
                       className="border-b border-line/60 last:border-0"
                     >
-                      <td className="px-2 py-3 font-medium">{p.name}</td>
+                      <td className="px-2 py-3">
+                        <div className="flex items-center gap-2.5">
+                          {p.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={p.imageUrl}
+                              alt=""
+                              className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ink/5 font-display text-xs font-bold text-ink">
+                              {p.name.slice(0, 2).toUpperCase()}
+                            </span>
+                          )}
+                          <span className="font-medium">{p.name}</span>
+                        </div>
+                      </td>
                       <td className="px-2 py-3 text-muted">{p.sku ?? "—"}</td>
                       <td className="px-2 py-3 text-right font-mono tnum">
                         {formatRs(p.currentCost)}

@@ -142,6 +142,7 @@ model Product {
   sku                String?
   barcode            String?
   description        String?
+  imageUrl           String? // product photo (data URL for the pilot; object storage later)
   currentCost        Int       @default(0) // whole rupees
   defaultPrice       Int? // whole rupees
   stockQuantity      Int       @default(0) // cache; stock_movements is source of truth
