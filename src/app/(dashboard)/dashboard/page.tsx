@@ -1,12 +1,12 @@
-import { currentUser } from "@clerk/nextjs/server";
 import { TrendingUp } from "lucide-react";
+import { getActiveContext } from "@/lib/auth-context";
+import { getDashboardData } from "@/features/dashboard/queries";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { SalesChart } from "@/components/dashboard/sales-chart";
 import { ExpenseDonut } from "@/components/dashboard/expense-donut";
 import { TopProducts } from "@/components/dashboard/top-products";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { Panel } from "@/components/ui/panel";
-import { kpis, summary } from "@/features/dashboard/placeholder";
 import { formatRs, formatNumber, formatDelta } from "@/lib/money";
 
 function Legend() {
@@ -32,28 +32,36 @@ function HeroStat({ label, value }: { label: string; value: string }) {
 }
 
 export default async function DashboardPage() {
-  const user = await currentUser();
-  const firstName = user?.firstName ?? "there";
-  const netProfit = kpis.find((k) => k.key === "netProfit")!;
+  const ctx = await getActiveContext();
+  if (!ctx?.business) return null; // layout handles the redirect to onboarding
+
+  const data = await getDashboardData(ctx.business.id);
+  const netProfit = data.kpis.find((k) => k.key === "netProfit")!;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="font-display text-2xl font-bold tracking-tight">
-            Good day, {firstName} 👋
+            Good day, {ctx.user.displayName} 👋
           </p>
-          <p className="text-sm text-muted">
-            A quick look at this week&apos;s numbers.
-          </p>
+          <p className="text-sm text-muted">Your shop over the last 7 days.</p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted">
-          <span className="h-1.5 w-1.5 rounded-full bg-brand" /> Sample data
+          <span className="h-1.5 w-1.5 rounded-full bg-brand" /> Last 7 days
         </span>
       </div>
 
+      {!data.hasData && (
+        <div className="rounded-2xl border border-dashed border-line bg-surface px-4 py-3 text-sm text-muted">
+          No sales or expenses yet. Record a sale in{" "}
+          <span className="font-medium text-text">Quick Sale</span> and your real
+          numbers will appear here.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((kpi) => (
+        {data.kpis.map((kpi) => (
           <StatCard key={kpi.key} kpi={kpi} />
         ))}
       </div>
@@ -65,13 +73,13 @@ export default async function DashboardPage() {
           action={<Legend />}
           className="xl:col-span-2"
         >
-          <SalesChart />
+          <SalesChart data={data.series} />
         </Panel>
 
         <div className="flex flex-col justify-between rounded-2xl bg-ink p-5 text-white shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium uppercase tracking-wide text-white/50">
-              Est. net profit · this week
+              Est. net profit · 7 days
             </span>
             <span className="inline-flex items-center gap-0.5 rounded-full bg-brand/20 px-1.5 py-0.5 text-[11px] font-semibold text-brand">
               <TrendingUp className="h-3 w-3" />
@@ -87,10 +95,16 @@ export default async function DashboardPage() {
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
-            <HeroStat label="Sales" value={formatNumber(summary.salesCount)} />
-            <HeroStat label="Units sold" value={formatNumber(summary.unitsSold)} />
-            <HeroStat label="Avg order" value={formatRs(summary.avgOrder)} />
-            <HeroStat label="Low stock" value={`${summary.lowStock} items`} />
+            <HeroStat label="Sales" value={formatNumber(data.summary.salesCount)} />
+            <HeroStat
+              label="Units sold"
+              value={formatNumber(data.summary.unitsSold)}
+            />
+            <HeroStat label="Avg order" value={formatRs(data.summary.avgOrder)} />
+            <HeroStat
+              label="Low stock"
+              value={`${data.summary.lowStock} items`}
+            />
           </div>
         </div>
       </div>
@@ -101,15 +115,15 @@ export default async function DashboardPage() {
           subtitle="By revenue this week"
           className="xl:col-span-2"
         >
-          <TopProducts />
+          <TopProducts products={data.topProducts} />
         </Panel>
         <Panel title="Where money went" subtitle="Expense breakdown">
-          <ExpenseDonut />
+          <ExpenseDonut slices={data.expenseSlices} />
         </Panel>
       </div>
 
       <Panel title="Recent activity" subtitle="Latest sales, expenses & stock">
-        <RecentActivity />
+        <RecentActivity items={data.recentActivity} />
       </Panel>
     </div>
   );

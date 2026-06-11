@@ -10,8 +10,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { salesSeries } from "@/features/dashboard/placeholder";
 import { formatRs } from "@/lib/money";
+import type { DayPoint } from "@/features/dashboard/types";
 
 type TooltipEntry = { dataKey?: string | number; value?: number; color?: string };
 
@@ -44,13 +44,10 @@ function ChartTooltip({
   );
 }
 
-export function SalesChart() {
+export function SalesChart({ data }: { data: DayPoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <ComposedChart
-        data={salesSeries}
-        margin={{ top: 10, right: 6, bottom: 0, left: 6 }}
-      >
+      <ComposedChart data={data} margin={{ top: 10, right: 6, bottom: 0, left: 6 }}>
         <defs>
           <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--ink)" stopOpacity={0.16} />
@@ -66,10 +63,7 @@ export function SalesChart() {
           dy={8}
         />
         <YAxis hide />
-        <Tooltip
-          content={<ChartTooltip />}
-          cursor={{ stroke: "var(--line)" }}
-        />
+        <Tooltip content={<ChartTooltip />} cursor={{ stroke: "var(--line)" }} />
         <Area
           type="monotone"
           dataKey="sales"

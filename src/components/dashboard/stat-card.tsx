@@ -1,6 +1,6 @@
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { formatRs, formatNumber, formatDelta } from "@/lib/money";
-import type { Kpi } from "@/features/dashboard/placeholder";
+import type { Kpi } from "@/features/dashboard/types";
 import { Sparkline } from "./sparkline";
 
 const sparkColor: Record<Kpi["tone"], string> = {

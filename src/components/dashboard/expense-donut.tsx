@@ -1,11 +1,19 @@
 "use client";
 
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
-import { expenseSlices } from "@/features/dashboard/placeholder";
 import { formatRs } from "@/lib/money";
+import type { ExpenseSlice } from "@/features/dashboard/types";
 
-export function ExpenseDonut() {
-  const total = expenseSlices.reduce((sum, e) => sum + e.amount, 0);
+export function ExpenseDonut({ slices }: { slices: ExpenseSlice[] }) {
+  if (slices.length === 0) {
+    return (
+      <p className="py-8 text-center text-sm text-muted">
+        No expenses recorded yet.
+      </p>
+    );
+  }
+
+  const total = slices.reduce((sum, e) => sum + e.amount, 0);
 
   return (
     <div className="flex items-center gap-5">
@@ -13,7 +21,7 @@ export function ExpenseDonut() {
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={expenseSlices}
+              data={slices}
               dataKey="amount"
               nameKey="name"
               innerRadius={48}
@@ -21,7 +29,7 @@ export function ExpenseDonut() {
               paddingAngle={2}
               stroke="none"
             >
-              {expenseSlices.map((s) => (
+              {slices.map((s) => (
                 <Cell key={s.name} fill={s.color} />
               ))}
             </Pie>
@@ -37,7 +45,7 @@ export function ExpenseDonut() {
         </div>
       </div>
       <ul className="flex-1 space-y-2">
-        {expenseSlices.map((s) => (
+        {slices.map((s) => (
           <li key={s.name} className="flex items-center gap-2 text-sm">
             <span
               className="h-2.5 w-2.5 rounded-sm"

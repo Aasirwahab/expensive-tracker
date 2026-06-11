@@ -84,8 +84,8 @@ export function Sidebar({
 
       <div className="px-5 py-4">
         <div className="rounded-xl bg-white/[0.04] p-3 text-xs text-white/50">
-          <p className="font-medium text-white/80">Sample data</p>
-          <p className="mt-0.5">Your dashboard fills in once you record sales.</p>
+          <p className="font-medium text-white/80">Tip</p>
+          <p className="mt-0.5">Record sales in Quick Sale to update your dashboard.</p>
         </div>
       </div>
     </aside>

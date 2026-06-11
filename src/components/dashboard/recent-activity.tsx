@@ -1,6 +1,6 @@
 import { Receipt, Wallet, Boxes } from "lucide-react";
-import { recentActivity, type Activity } from "@/features/dashboard/placeholder";
 import { formatRs } from "@/lib/money";
+import type { Activity } from "@/features/dashboard/types";
 
 const iconFor: Record<Activity["kind"], typeof Receipt> = {
   sale: Receipt,
@@ -14,10 +14,18 @@ const tintFor: Record<Activity["kind"], string> = {
   stock: "bg-ink/5 text-ink",
 };
 
-export function RecentActivity() {
+export function RecentActivity({ items }: { items: Activity[] }) {
+  if (items.length === 0) {
+    return (
+      <p className="py-8 text-center text-sm text-muted">
+        Nothing yet — record a sale in Quick Sale to get started.
+      </p>
+    );
+  }
+
   return (
     <ul className="grid gap-0.5 sm:grid-cols-2">
-      {recentActivity.map((a, i) => {
+      {items.map((a, i) => {
         const Icon = iconFor[a.kind];
         return (
           <li
@@ -31,7 +39,9 @@ export function RecentActivity() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{a.title}</p>
-              <p className="truncate text-xs text-muted">{a.detail}</p>
+              <p className="truncate text-xs capitalize text-muted">
+                {a.detail}
+              </p>
             </div>
             <div className="text-right">
               {a.amount > 0 && (
