@@ -79,6 +79,7 @@ model User {
 model Business {
   id              String         @id @default(cuid())
   name            String
+  businessType    String? // e.g. clothing, cosmetics, hardware, electronics, grocery, watch, other
   slug            String         @unique
   countryCode     String         @default("LK")
   currencyCode    String         @default("LKR") // display symbol: Rs
