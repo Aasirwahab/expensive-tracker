@@ -1,0 +1,275 @@
+// ShopLedger — trimmed-core schema (Revision 1.1)
+// Money: all amounts are whole Sri Lankan Rupees stored as Int (no cents, no minor units).
+// Stock: stock_movements is the source of truth; Product.stockQuantity is a cache.
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===================== Enums =====================
+
+enum Role {
+  OWNER
+  STAFF
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum BusinessStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum MovementType {
+  OPENING
+  PURCHASE
+  SALE
+  RETURN
+  DAMAGE
+  LOSS
+  ADJUSTMENT
+  REVERSAL
+}
+
+enum SaleStatus {
+  COMPLETED
+  VOIDED
+}
+
+enum ExpenseStatus {
+  ACTIVE
+  VOIDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  OTHER
+}
+
+// ===================== Identity & tenancy =====================
+
+model User {
+  id          String   @id @default(cuid())
+  clerkUserId String   @unique
+  displayName String
+  email       String
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships     Membership[]
+  createdSales    Sale[]          @relation("SaleCreatedBy")
+  createdExpenses Expense[]       @relation("ExpenseCreatedBy")
+  stockMovements  StockMovement[] @relation("MovementCreatedBy")
+}
+
+model Business {
+  id              String         @id @default(cuid())
+  name            String
+  slug            String         @unique
+  countryCode     String         @default("LK")
+  currencyCode    String         @default("LKR") // display symbol: Rs
+  timezone        String         @default("Asia/Colombo")
+  weekStartsOn    Int            @default(1) // 0=Sun .. 6=Sat; 1=Mon
+  status          BusinessStatus @default(ACTIVE)
+  createdByUserId String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  memberships       Membership[]
+  categories        Category[]
+  products          Product[]
+  sales             Sale[]
+  saleItems         SaleItem[]
+  expenses          Expense[]
+  expenseCategories ExpenseCategory[]
+  stockMovements    StockMovement[]
+}
+
+model Membership {
+  id              String           @id @default(cuid())
+  businessId      String
+  userId          String
+  role            Role             @default(STAFF)
+  status          MembershipStatus @default(ACTIVE)
+  invitedByUserId String?
+  joinedAt        DateTime?
+  createdAt       DateTime         @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId])
+  @@index([userId])
+}
+
+// ===================== Catalogue & inventory =====================
+
+model Category {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@index([businessId, isActive])
+}
+
+model Product {
+  id                 String    @id @default(cuid())
+  businessId         String
+  categoryId         String?
+  name               String
+  sku                String?
+  barcode            String?
+  description        String?
+  currentCost        Int       @default(0) // whole rupees
+  defaultPrice       Int? // whole rupees
+  stockQuantity      Int       @default(0) // cache; stock_movements is source of truth
+  lowStockThreshold  Int?
+  allowNegativeStock Boolean   @default(false)
+  isActive           Boolean   @default(true)
+  archivedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  saleItems      SaleItem[]
+  stockMovements StockMovement[]
+
+  @@unique([businessId, sku]) // NULL skus are allowed multiple times (Postgres treats NULLs as distinct)
+  @@index([businessId, isActive])
+  @@index([businessId, categoryId])
+}
+
+model StockMovement {
+  id              String       @id @default(cuid())
+  businessId      String
+  productId       String
+  type            MovementType
+  quantityDelta   Int // positive or negative whole units
+  unitCost        Int? // whole rupees
+  referenceType   String? // "sale" | "purchase" | "adjustment"
+  referenceId     String?
+  note            String?
+  createdByUserId String
+  occurredAt      DateTime     @default(now()) // business event time
+  createdAt       DateTime     @default(now()) // system creation time
+
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("MovementCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([businessId, productId, occurredAt])
+}
+
+// ===================== Sales =====================
+
+model Sale {
+  id              String        @id @default(cuid())
+  businessId      String
+  saleNumber      String // human-readable, unique per business
+  status          SaleStatus    @default(COMPLETED)
+  subtotal        Int // whole rupees
+  discount        Int           @default(0)
+  total           Int
+  totalCogs       Int
+  grossProfit     Int
+  paymentMethod   PaymentMethod @default(CASH)
+  note            String?
+  soldAt          DateTime      @default(now())
+  createdByUserId String
+  idempotencyKey  String? // prevents duplicate submissions
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy User       @relation("SaleCreatedBy", fields: [createdByUserId], references: [id])
+  items     SaleItem[]
+
+  @@unique([businessId, saleNumber])
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, soldAt])
+  @@index([businessId, status])
+}
+
+model SaleItem {
+  id                  String   @id @default(cuid())
+  businessId          String
+  saleId              String
+  productId           String
+  productNameSnapshot String // preserve product name at sale time
+  skuSnapshot         String?
+  quantity            Int // whole units
+  unitCost            Int // historical cost snapshot, whole rupees
+  unitPrice           Int // actual selling price, whole rupees
+  discount            Int      @default(0) // line discount
+  lineRevenue         Int
+  lineCogs            Int
+  lineProfit          Int
+  createdAt           DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([businessId, productId])
+  @@index([saleId])
+}
+
+// ===================== Expenses =====================
+
+model ExpenseCategory {
+  id              String   @id @default(cuid())
+  businessId      String
+  name            String
+  isSystemDefault Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([businessId, isActive])
+}
+
+model Expense {
+  id                String         @id @default(cuid())
+  businessId        String
+  expenseCategoryId String
+  amount            Int // whole rupees
+  description       String
+  payee             String?
+  paymentMethod     PaymentMethod?
+  expenseDate       DateTime       @db.Date // business-local date
+  status            ExpenseStatus  @default(ACTIVE)
+  createdByUserId   String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  business        Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  expenseCategory ExpenseCategory @relation(fields: [expenseCategoryId], references: [id])
+  createdBy       User            @relation("ExpenseCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([businessId, expenseDate])
+  @@index([businessId, status])
+}
