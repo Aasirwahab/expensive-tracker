@@ -20,11 +20,16 @@ function initialsOf(name: string) {
 export function Sidebar({
   businessName,
   businessType,
+  role,
 }: {
   businessName: string;
   businessType?: string | null;
+  role?: string | null;
 }) {
   const pathname = usePathname();
+  const items = navItems.filter(
+    (item) => !item.ownerOnly || role === "OWNER",
+  );
 
   return (
     <aside className="hidden w-[256px] shrink-0 flex-col bg-ink lg:flex">
@@ -59,7 +64,7 @@ export function Sidebar({
       </div>
 
       <nav className="mt-5 flex-1 space-y-1 px-3">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;

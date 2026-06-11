@@ -30,11 +30,50 @@ export async function getActiveContext() {
   const user = await syncUser();
   if (!user) return null;
 
-  const membership = await prisma.membership.findFirst({
+  let membership = await prisma.membership.findFirst({
     where: { userId: user.id, status: "ACTIVE" },
     include: { business: true },
     orderBy: { createdAt: "asc" },
   });
+
+  // Staff onboarding: if this user has no business but was invited by email,
+  // accept the invitation and join as the invited role.
+  if (!membership && user.email) {
+    const invite = await prisma.invitation.findFirst({
+      where: {
+        email: { equals: user.email, mode: "insensitive" },
+        status: "PENDING",
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    if (invite) {
+      await prisma.$transaction(async (tx) => {
+        await tx.membership.upsert({
+          where: {
+            businessId_userId: { businessId: invite.businessId, userId: user.id },
+          },
+          create: {
+            businessId: invite.businessId,
+            userId: user.id,
+            role: invite.role,
+            status: "ACTIVE",
+            joinedAt: new Date(),
+            invitedByUserId: invite.invitedByUserId,
+          },
+          update: { status: "ACTIVE", role: invite.role, joinedAt: new Date() },
+        });
+        await tx.invitation.update({
+          where: { id: invite.id },
+          data: { status: "ACCEPTED", acceptedAt: new Date() },
+        });
+      });
+      membership = await prisma.membership.findFirst({
+        where: { userId: user.id, status: "ACTIVE" },
+        include: { business: true },
+        orderBy: { createdAt: "asc" },
+      });
+    }
+  }
 
   return {
     user,

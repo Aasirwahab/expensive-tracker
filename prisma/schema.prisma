@@ -59,6 +59,12 @@ enum PaymentMethod {
   OTHER
 }
 
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
 // ===================== Identity & tenancy =====================
 
 model User {
@@ -98,6 +104,7 @@ model Business {
   expenses          Expense[]
   expenseCategories ExpenseCategory[]
   stockMovements    StockMovement[]
+  invitations       Invitation[]
 }
 
 model Membership {
@@ -274,4 +281,20 @@ model Expense {
 
   @@index([businessId, expenseDate])
   @@index([businessId, status])
+}
+
+model Invitation {
+  id              String           @id @default(cuid())
+  businessId      String
+  email           String
+  role            Role             @default(STAFF)
+  status          InvitationStatus @default(PENDING)
+  invitedByUserId String
+  createdAt       DateTime         @default(now())
+  acceptedAt      DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, email])
+  @@index([email])
 }

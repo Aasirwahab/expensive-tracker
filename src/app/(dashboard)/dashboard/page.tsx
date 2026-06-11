@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { TrendingUp } from "lucide-react";
 import { getActiveContext } from "@/lib/auth-context";
 import { getDashboardData } from "@/features/dashboard/queries";
@@ -34,6 +35,8 @@ function HeroStat({ label, value }: { label: string; value: string }) {
 export default async function DashboardPage() {
   const ctx = await getActiveContext();
   if (!ctx?.business) return null; // layout handles the redirect to onboarding
+  // The financial dashboard is owner-only; staff start at Quick Sale.
+  if (ctx.role !== "OWNER") redirect("/quick-sale");
 
   const data = await getDashboardData(ctx.business.id);
   const netProfit = data.kpis.find((k) => k.key === "netProfit")!;

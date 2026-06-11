@@ -17,6 +17,7 @@ export default async function DashboardLayout({
       <Sidebar
         businessName={ctx.business.name}
         businessType={ctx.business.businessType}
+        role={ctx.role}
       />
       <div className="ledger-bg flex min-h-screen flex-1 flex-col">
         <Topbar />
