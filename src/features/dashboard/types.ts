@@ -41,5 +41,6 @@ export type DashboardData = {
   topProducts: TopProduct[];
   expenseSlices: ExpenseSlice[];
   recentActivity: Activity[];
+  lowStockItems: { name: string; stock: number; threshold: number }[];
   hasData: boolean;
 };

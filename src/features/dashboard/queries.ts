@@ -6,6 +6,7 @@ import type {
   ExpenseSlice,
   Activity,
 } from "./types";
+import type { ResolvedRange } from "@/lib/date-range";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const SLICE_COLORS = [
@@ -40,107 +41,112 @@ function timeAgo(d: Date): string {
   return `${Math.floor(days / 7)}w ago`;
 }
 
-/** Dashboard metrics for the last 7 days vs the previous 7 days. */
 export async function getDashboardData(
   businessId: string,
+  range: ResolvedRange,
 ): Promise<DashboardData> {
+  const to = range.to;
+  const from = range.from; // null = all time
+
+  // Previous period of equal length, for delta chips.
+  let prevFrom: Date | null = null;
+  if (from) {
+    const len = to.getTime() - from.getTime();
+    prevFrom = new Date(from.getTime() - len);
+  }
+  const lower = prevFrom ?? from;
+  const salesWindow = lower ? { gte: lower, lte: to } : { lte: to };
+  const rangeWindow = from ? { gte: from, lte: to } : { lte: to };
+
+  // The trend chart is always the last 7 days, independent of the KPI range.
   const today0 = startOfDay(new Date());
-  const weekStart = addDays(today0, -6); // 7 days including today
-  const prevStart = addDays(today0, -13);
+  const weekStart = addDays(today0, -6);
 
-  const days: Date[] = [];
-  for (let i = 6; i >= 0; i--) days.push(addDays(today0, -i));
+  const [
+    rangeSales,
+    weekSales,
+    items,
+    expenses,
+    lowStockProducts,
+    recentSales,
+    recentExpenses,
+  ] = await Promise.all([
+    prisma.sale.findMany({
+      where: { businessId, status: "COMPLETED", soldAt: salesWindow },
+      select: { total: true, totalCogs: true, grossProfit: true, soldAt: true },
+    }),
+    prisma.sale.findMany({
+      where: { businessId, status: "COMPLETED", soldAt: { gte: weekStart } },
+      select: { total: true, grossProfit: true, soldAt: true },
+    }),
+    prisma.saleItem.findMany({
+      where: { businessId, sale: { status: "COMPLETED", soldAt: rangeWindow } },
+      select: {
+        productNameSnapshot: true,
+        skuSnapshot: true,
+        quantity: true,
+        lineRevenue: true,
+        lineProfit: true,
+      },
+    }),
+    prisma.expense.findMany({
+      where: { businessId, status: "ACTIVE", expenseDate: salesWindow },
+      select: {
+        amount: true,
+        expenseDate: true,
+        expenseCategory: { select: { name: true } },
+      },
+    }),
+    prisma.product.findMany({
+      where: { businessId, archivedAt: null, lowStockThreshold: { not: null } },
+      select: { name: true, stockQuantity: true, lowStockThreshold: true },
+    }),
+    prisma.sale.findMany({
+      where: { businessId },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: {
+        saleNumber: true,
+        total: true,
+        paymentMethod: true,
+        createdAt: true,
+      },
+    }),
+    prisma.expense.findMany({
+      where: { businessId, status: "ACTIVE" },
+      orderBy: { createdAt: "desc" },
+      take: 4,
+      select: {
+        description: true,
+        amount: true,
+        createdAt: true,
+        expenseCategory: { select: { name: true } },
+      },
+    }),
+  ]);
 
-  const [sales, saleItems, expenses, lowStockProducts, recentSales, recentExpenses] =
-    await Promise.all([
-      prisma.sale.findMany({
-        where: { businessId, status: "COMPLETED", soldAt: { gte: prevStart } },
-        select: { total: true, totalCogs: true, grossProfit: true, soldAt: true },
-      }),
-      prisma.saleItem.findMany({
-        where: { businessId, createdAt: { gte: weekStart } },
-        select: {
-          productNameSnapshot: true,
-          skuSnapshot: true,
-          quantity: true,
-          lineRevenue: true,
-          lineProfit: true,
-        },
-      }),
-      prisma.expense.findMany({
-        where: { businessId, status: "ACTIVE", expenseDate: { gte: prevStart } },
-        select: {
-          amount: true,
-          expenseDate: true,
-          expenseCategory: { select: { name: true } },
-        },
-      }),
-      prisma.product.findMany({
-        where: {
-          businessId,
-          archivedAt: null,
-          lowStockThreshold: { not: null },
-        },
-        select: { stockQuantity: true, lowStockThreshold: true },
-      }),
-      prisma.sale.findMany({
-        where: { businessId },
-        orderBy: { createdAt: "desc" },
-        take: 6,
-        select: {
-          saleNumber: true,
-          total: true,
-          paymentMethod: true,
-          createdAt: true,
-        },
-      }),
-      prisma.expense.findMany({
-        where: { businessId, status: "ACTIVE" },
-        orderBy: { createdAt: "desc" },
-        take: 4,
-        select: {
-          description: true,
-          amount: true,
-          createdAt: true,
-          expenseCategory: { select: { name: true } },
-        },
-      }),
-    ]);
-
-  // --- sales sums + daily series + deltas ---
+  // --- KPI sums (current range vs previous) ---
   let grossSales = 0;
-  let cogs = 0;
   let grossProfit = 0;
   let salesCount = 0;
   let prevSales = 0;
   let prevProfit = 0;
-  const daily = new Map<string, { sales: number; profit: number }>();
-  for (const d of days) daily.set(dayKey(d), { sales: 0, profit: 0 });
-
-  for (const s of sales) {
-    if (s.soldAt >= weekStart) {
+  for (const s of rangeSales) {
+    if (!from || s.soldAt >= from) {
       grossSales += s.total;
-      cogs += s.totalCogs;
       grossProfit += s.grossProfit;
       salesCount++;
-      const bucket = daily.get(dayKey(startOfDay(s.soldAt)));
-      if (bucket) {
-        bucket.sales += s.total;
-        bucket.profit += s.grossProfit;
-      }
     } else {
       prevSales += s.total;
       prevProfit += s.grossProfit;
     }
   }
-  void cogs;
 
-  // --- expenses ---
   let expensesTotal = 0;
   let prevExpenses = 0;
   const byCategory = new Map<string, number>();
   for (const e of expenses) {
-    if (e.expenseDate >= weekStart) {
+    if (!from || e.expenseDate >= from) {
       expensesTotal += e.amount;
       const name = e.expenseCategory?.name ?? "Other";
       byCategory.set(name, (byCategory.get(name) ?? 0) + e.amount);
@@ -151,25 +157,44 @@ export async function getDashboardData(
   const netProfit = grossProfit - expensesTotal;
   const prevNet = prevProfit - prevExpenses;
 
-  // --- units + top products ---
+  // --- 7-day trend chart ---
+  const days: Date[] = [];
+  for (let i = 6; i >= 0; i--) days.push(addDays(today0, -i));
+  const daily = new Map<string, { sales: number; profit: number }>();
+  for (const d of days) daily.set(dayKey(d), { sales: 0, profit: 0 });
+  for (const s of weekSales) {
+    const b = daily.get(dayKey(startOfDay(s.soldAt)));
+    if (b) {
+      b.sales += s.total;
+      b.profit += s.grossProfit;
+    }
+  }
+  const series: DayPoint[] = days.map((d) => {
+    const b = daily.get(dayKey(d))!;
+    return { day: WEEKDAYS[d.getDay()], sales: b.sales, profit: b.profit };
+  });
+  const salesSpark = series.map((d) => d.sales);
+  const profitSpark = series.map((d) => d.profit);
+
+  // --- units + top products (current range) ---
   let unitsSold = 0;
   const products = new Map<
     string,
     { name: string; sku: string | null; units: number; revenue: number; profit: number }
   >();
-  for (const it of saleItems) {
+  for (const it of items) {
     unitsSold += it.quantity;
-    const entry = products.get(it.productNameSnapshot) ?? {
+    const e = products.get(it.productNameSnapshot) ?? {
       name: it.productNameSnapshot,
       sku: it.skuSnapshot,
       units: 0,
       revenue: 0,
       profit: 0,
     };
-    entry.units += it.quantity;
-    entry.revenue += it.lineRevenue;
-    entry.profit += it.lineProfit;
-    products.set(it.productNameSnapshot, entry);
+    e.units += it.quantity;
+    e.revenue += it.lineRevenue;
+    e.profit += it.lineProfit;
+    products.set(it.productNameSnapshot, e);
   }
   const topProducts = [...products.values()]
     .sort((a, b) => b.revenue - a.revenue)
@@ -181,17 +206,6 @@ export async function getDashboardData(
       revenue: p.revenue,
       margin: p.revenue > 0 ? Math.round((p.profit / p.revenue) * 100) : 0,
     }));
-
-  const series: DayPoint[] = days.map((d) => {
-    const bucket = daily.get(dayKey(d))!;
-    return {
-      day: WEEKDAYS[d.getDay()],
-      sales: bucket.sales,
-      profit: bucket.profit,
-    };
-  });
-  const salesSpark = series.map((d) => d.sales);
-  const profitSpark = series.map((d) => d.profit);
 
   const kpis: Kpi[] = [
     {
@@ -266,9 +280,16 @@ export async function getDashboardData(
     .slice(0, 6)
     .map(({ at: _at, ...rest }) => rest);
 
-  const lowStock = lowStockProducts.filter(
-    (p) => p.lowStockThreshold != null && p.stockQuantity <= p.lowStockThreshold,
-  ).length;
+  const lowStockItems = lowStockProducts
+    .filter(
+      (p) => p.lowStockThreshold != null && p.stockQuantity <= p.lowStockThreshold,
+    )
+    .map((p) => ({
+      name: p.name,
+      stock: p.stockQuantity,
+      threshold: p.lowStockThreshold as number,
+    }))
+    .sort((a, b) => a.stock - b.stock);
 
   return {
     kpis,
@@ -276,12 +297,13 @@ export async function getDashboardData(
       salesCount,
       unitsSold,
       avgOrder: salesCount > 0 ? Math.round(grossSales / salesCount) : 0,
-      lowStock,
+      lowStock: lowStockItems.length,
     },
     series,
     topProducts,
     expenseSlices,
     recentActivity,
-    hasData: sales.length > 0 || expenses.length > 0,
+    lowStockItems,
+    hasData: rangeSales.length > 0 || expenses.length > 0,
   };
 }

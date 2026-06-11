@@ -33,7 +33,11 @@ export default async function QuickSalePage() {
           Tap or drag a product, set the price, and complete the sale.
         </p>
       </div>
-      <QuickSale products={saleProducts} showProfit={isOwner} />
+      <QuickSale
+        products={saleProducts}
+        showProfit={isOwner}
+        businessName={ctx.business.name}
+      />
     </div>
   );
 }

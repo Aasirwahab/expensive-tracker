@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, PackageCheck, TriangleAlert } from "lucide-react";
 import { getActiveContext } from "@/lib/auth-context";
 import { getDashboardData } from "@/features/dashboard/queries";
+import { resolveRange, RANGE_OPTIONS } from "@/lib/date-range";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { SalesChart } from "@/components/dashboard/sales-chart";
 import { ExpenseDonut } from "@/components/dashboard/expense-donut";
@@ -32,34 +34,50 @@ function HeroStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
   const ctx = await getActiveContext();
   if (!ctx?.business) return null; // layout handles the redirect to onboarding
-  // The financial dashboard is owner-only; staff start at Quick Sale.
   if (ctx.role !== "OWNER") redirect("/quick-sale");
 
-  const data = await getDashboardData(ctx.business.id);
+  const range = resolveRange((await searchParams).range);
+  const data = await getDashboardData(ctx.business.id, range);
   const netProfit = data.kpis.find((k) => k.key === "netProfit")!;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="font-display text-2xl font-bold tracking-tight">
             Good day, {ctx.user.displayName} 👋
           </p>
-          <p className="text-sm text-muted">Your shop over the last 7 days.</p>
+          <p className="text-sm text-muted">Your shop — {range.label.toLowerCase()}.</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted">
-          <span className="h-1.5 w-1.5 rounded-full bg-brand" /> Last 7 days
-        </span>
+        <div className="flex items-center rounded-xl border border-line bg-surface p-0.5">
+          {RANGE_OPTIONS.map((r) => (
+            <Link
+              key={r.key}
+              href={`/dashboard?range=${r.key}`}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                range.key === r.key
+                  ? "bg-ink text-white"
+                  : "text-muted hover:text-text"
+              }`}
+            >
+              {r.label}
+            </Link>
+          ))}
+        </div>
       </div>
 
       {!data.hasData && (
         <div className="rounded-2xl border border-dashed border-line bg-surface px-4 py-3 text-sm text-muted">
-          No sales or expenses yet. Record a sale in{" "}
-          <span className="font-medium text-text">Quick Sale</span> and your real
-          numbers will appear here.
+          No sales or expenses in this period. Record a sale in{" "}
+          <span className="font-medium text-text">Quick Sale</span> to see your
+          numbers.
         </div>
       )}
 
@@ -82,7 +100,7 @@ export default async function DashboardPage() {
         <div className="flex flex-col justify-between rounded-2xl bg-ink p-5 text-white shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium uppercase tracking-wide text-white/50">
-              Est. net profit · 7 days
+              Est. net profit · {range.label.toLowerCase()}
             </span>
             <span className="inline-flex items-center gap-0.5 rounded-full bg-brand/20 px-1.5 py-0.5 text-[11px] font-semibold text-brand">
               <TrendingUp className="h-3 w-3" />
@@ -115,7 +133,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Panel
           title="Top products"
-          subtitle="By revenue this week"
+          subtitle={`By revenue · ${range.label.toLowerCase()}`}
           className="xl:col-span-2"
         >
           <TopProducts products={data.topProducts} />
@@ -125,9 +143,40 @@ export default async function DashboardPage() {
         </Panel>
       </div>
 
-      <Panel title="Recent activity" subtitle="Latest sales, expenses & stock">
-        <RecentActivity items={data.recentActivity} />
-      </Panel>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <Panel
+          title="Recent activity"
+          subtitle="Latest sales & expenses"
+          className="xl:col-span-2"
+        >
+          <RecentActivity items={data.recentActivity} />
+        </Panel>
+        <Panel title="Low stock" subtitle="Restock soon">
+          {data.lowStockItems.length === 0 ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted">
+              <PackageCheck className="h-4 w-4 text-brand" /> Everything is well
+              stocked.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {data.lowStockItems.map((p) => (
+                <li
+                  key={p.name}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-warn" />
+                    <span className="truncate">{p.name}</span>
+                  </span>
+                  <span className="font-mono tnum text-loss">
+                    {formatNumber(p.stock)} left
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
     </div>
   );
 }

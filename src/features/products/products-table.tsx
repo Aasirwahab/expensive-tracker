@@ -285,6 +285,21 @@ function EditModal({
                   className={fieldClass}
                 />
               </div>
+              <div className="col-span-2">
+                <label className={labelClass} htmlFor="edit-low">
+                  Low-stock alert{" "}
+                  <span className="text-muted/60">(optional)</span>
+                </label>
+                <input
+                  id="edit-low"
+                  name="lowStockThreshold"
+                  type="number"
+                  min="0"
+                  step="1"
+                  defaultValue={product.lowStockThreshold ?? ""}
+                  className={fieldClass}
+                />
+              </div>
             </div>
           </div>
 

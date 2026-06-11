@@ -17,11 +17,14 @@ function readImage(formData: FormData): string | null {
     : null;
 }
 
+const optionalThreshold = z.coerce.number().int().min(0).max(1_000_000).optional();
+
 const createSchema = z.object({
   name: z.string().trim().min(1, "Product name is required").max(80),
   sku: z.string().trim().max(40).optional(),
   currentCost: z.coerce.number().int().min(0).max(2_000_000_000),
   openingStock: z.coerce.number().int().min(0).max(1_000_000),
+  lowStockThreshold: optionalThreshold,
 });
 
 export async function createProduct(
@@ -40,12 +43,14 @@ export async function createProduct(
     sku: formData.get("sku") || undefined,
     currentCost: formData.get("currentCost"),
     openingStock: formData.get("openingStock") || 0,
+    lowStockThreshold: formData.get("lowStockThreshold") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Please check the form." };
   }
 
-  const { name, sku, currentCost, openingStock } = parsed.data;
+  const { name, sku, currentCost, openingStock, lowStockThreshold } =
+    parsed.data;
   const businessId = ctx.business.id;
   const userId = ctx.user.id;
 
@@ -58,6 +63,7 @@ export async function createProduct(
         sku: sku ? sku : null,
         currentCost,
         stockQuantity: openingStock,
+        lowStockThreshold: lowStockThreshold ?? null,
       },
     });
 
@@ -87,6 +93,7 @@ const updateSchema = z.object({
   sku: z.string().trim().max(40).optional(),
   currentCost: z.coerce.number().int().min(0).max(2_000_000_000),
   stockQuantity: z.coerce.number().int().min(0).max(1_000_000),
+  lowStockThreshold: optionalThreshold,
 });
 
 export async function updateProduct(
@@ -106,16 +113,17 @@ export async function updateProduct(
     sku: formData.get("sku") || undefined,
     currentCost: formData.get("currentCost"),
     stockQuantity: formData.get("stockQuantity") || 0,
+    lowStockThreshold: formData.get("lowStockThreshold") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Please check the form." };
   }
 
-  const { productId, name, sku, currentCost, stockQuantity } = parsed.data;
+  const { productId, name, sku, currentCost, stockQuantity, lowStockThreshold } =
+    parsed.data;
   const businessId = ctx.business.id;
   const userId = ctx.user.id;
 
-  // Scope to the active business (tenant safety).
   const existing = await prisma.product.findFirst({
     where: { id: productId, businessId },
   });
@@ -126,10 +134,16 @@ export async function updateProduct(
   await prisma.$transaction(async (tx) => {
     await tx.product.update({
       where: { id: productId },
-      data: { name, sku: sku ? sku : null, currentCost, stockQuantity, imageUrl },
+      data: {
+        name,
+        sku: sku ? sku : null,
+        currentCost,
+        stockQuantity,
+        imageUrl,
+        lowStockThreshold: lowStockThreshold ?? null,
+      },
     });
 
-    // A manual stock change is recorded as an adjustment in the ledger.
     if (stockDelta !== 0) {
       await tx.stockMovement.create({
         data: {

@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Search, Plus, Minus, Trash2, ShoppingBag, Check } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Minus,
+  Trash2,
+  ShoppingBag,
+  Check,
+  Printer,
+} from "lucide-react";
 import { formatRs } from "@/lib/money";
 import { createSale, type SaleResult } from "./actions";
 
@@ -26,6 +34,14 @@ type CartLine = {
   unitPrice: number;
 };
 
+type ReceiptData = {
+  saleNumber: string;
+  date: Date;
+  payment: string;
+  items: { name: string; qty: number; price: number }[];
+  total: number;
+};
+
 const PAYMENTS = [
   { v: "CASH", l: "Cash" },
   { v: "CARD", l: "Card" },
@@ -33,12 +49,16 @@ const PAYMENTS = [
   { v: "OTHER", l: "Other" },
 ] as const;
 
+const paymentLabel = (v: string) => PAYMENTS.find((p) => p.v === v)?.l ?? v;
+
 export function QuickSale({
   products,
   showProfit,
+  businessName,
 }: {
   products: SaleProduct[];
   showProfit: boolean;
+  businessName: string;
 }) {
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -47,7 +67,7 @@ export function QuickSale({
     crypto.randomUUID(),
   );
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [pending, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -62,7 +82,6 @@ export function QuickSale({
 
   function addToCart(p: SaleProduct) {
     setError(null);
-    setDone(null);
     setCart((prev) => {
       const found = prev.find((l) => l.productId === p.id);
       const max = p.allowNegativeStock ? Infinity : p.stockQuantity;
@@ -122,10 +141,15 @@ export function QuickSale({
 
   function complete() {
     setError(null);
-    setDone(null);
     if (cart.length === 0) return setError("Add a product first.");
     if (cart.some((l) => l.unitPrice <= 0))
       return setError("Enter a selling price for every item.");
+
+    const snapshot = cart.map((l) => ({
+      name: l.name,
+      qty: l.quantity,
+      price: l.unitPrice,
+    }));
 
     startTransition(async () => {
       const res: SaleResult = await createSale({
@@ -138,7 +162,13 @@ export function QuickSale({
         idempotencyKey,
       });
       if (res.ok) {
-        setDone(res.saleNumber);
+        setReceipt({
+          saleNumber: res.saleNumber,
+          date: new Date(),
+          payment,
+          items: snapshot,
+          total: res.total,
+        });
         setCart([]);
         setIdempotencyKey(crypto.randomUUID());
       } else {
@@ -175,9 +205,7 @@ export function QuickSale({
                   type="button"
                   disabled={out}
                   draggable={!out}
-                  onDragStart={(e) =>
-                    e.dataTransfer.setData("text/plain", p.id)
-                  }
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", p.id)}
                   onClick={() => addToCart(p)}
                   className="group flex flex-col overflow-hidden rounded-xl border border-line bg-surface text-left transition hover:border-brand hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -270,7 +298,6 @@ export function QuickSale({
                     </button>
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">
-                    {/* qty stepper */}
                     <div className="flex items-center rounded-lg border border-line">
                       <button
                         type="button"
@@ -290,7 +317,6 @@ export function QuickSale({
                         <Plus className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    {/* selling price */}
                     <div className="relative flex-1">
                       <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted">
                         Rs
@@ -321,7 +347,6 @@ export function QuickSale({
           </ul>
         )}
 
-        {/* Totals */}
         <div className="mt-4 space-y-1.5 border-t border-line pt-3 text-sm">
           <div className="flex items-center justify-between">
             <span className="text-muted">Total</span>
@@ -347,7 +372,6 @@ export function QuickSale({
           )}
         </div>
 
-        {/* Payment */}
         <div className="mt-3 flex flex-wrap gap-1.5">
           {PAYMENTS.map((p) => (
             <button
@@ -371,7 +395,9 @@ export function QuickSale({
           disabled={pending || cart.length === 0}
           className="mt-3 w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep disabled:opacity-60"
         >
-          {pending ? "Saving sale…" : `Complete sale · ${formatRs(totals.revenue)}`}
+          {pending
+            ? "Saving sale…"
+            : `Complete sale · ${formatRs(totals.revenue)}`}
         </button>
 
         {error && (
@@ -379,12 +405,68 @@ export function QuickSale({
             {error}
           </p>
         )}
-        {done && (
-          <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-brand-soft px-3 py-2 text-sm font-medium text-brand-deep">
-            <Check className="h-4 w-4" /> Sale #{done} recorded. Stock updated.
-          </p>
-        )}
       </div>
+
+      {/* Receipt */}
+      {receipt && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+          onClick={() => setReceipt(null)}
+        >
+          <div
+            className="receipt-print w-full max-w-xs rounded-2xl bg-surface p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center">
+              <p className="font-display text-lg font-bold">{businessName}</p>
+              <p className="text-xs text-muted">Receipt #{receipt.saleNumber}</p>
+              <p className="text-xs text-muted">
+                {receipt.date.toLocaleString()}
+              </p>
+            </div>
+            <div className="my-3 space-y-1 border-t border-dashed border-line pt-3 text-sm">
+              {receipt.items.map((it, i) => (
+                <div key={i} className="flex justify-between gap-2">
+                  <span className="truncate">
+                    {it.name}{" "}
+                    <span className="text-muted">× {it.qty}</span>
+                  </span>
+                  <span className="font-mono tnum">
+                    {formatRs(it.qty * it.price)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between border-t border-dashed border-line pt-3 text-sm font-semibold">
+              <span>Total</span>
+              <span className="font-mono tnum">{formatRs(receipt.total)}</span>
+            </div>
+            <p className="mt-1 text-center text-xs text-muted">
+              Paid by {paymentLabel(receipt.payment)}
+            </p>
+            <p className="mt-3 flex items-center justify-center gap-1 text-center text-xs font-medium text-brand-deep">
+              <Check className="h-3.5 w-3.5" /> Thank you!
+            </p>
+
+            <div className="no-print mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-ink px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                <Printer className="h-4 w-4" /> Print
+              </button>
+              <button
+                type="button"
+                onClick={() => setReceipt(null)}
+                className="flex-1 rounded-xl border border-line px-4 py-2.5 text-sm font-medium text-text hover:bg-paper"
+              >
+                New sale
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

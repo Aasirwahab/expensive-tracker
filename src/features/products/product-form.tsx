@@ -91,6 +91,20 @@ export function ProductForm() {
               The selling price is set at sale time, so you can give discounts.
             </p>
           </div>
+          <div className="sm:col-span-2">
+            <label className={labelClass} htmlFor="lowStockThreshold">
+              Low-stock alert <span className="text-muted/60">(optional)</span>
+            </label>
+            <input
+              id="lowStockThreshold"
+              name="lowStockThreshold"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="e.g. 5 — warn when stock drops to this"
+              className={fieldClass}
+            />
+          </div>
         </div>
       </div>
 
