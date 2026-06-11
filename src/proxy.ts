@@ -2,7 +2,16 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 // Next.js 16 uses `proxy.ts` (the renamed `middleware.ts`). Clerk's middleware
 // is a default export + `config`, which matches the proxy file convention.
-const isProtectedRoute = createRouteMatcher(["/dashboard(.*)"]);
+const isProtectedRoute = createRouteMatcher([
+  "/dashboard(.*)",
+  "/quick-sale(.*)",
+  "/sales(.*)",
+  "/expenses(.*)",
+  "/products(.*)",
+  "/reports(.*)",
+  "/team(.*)",
+  "/settings(.*)",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
