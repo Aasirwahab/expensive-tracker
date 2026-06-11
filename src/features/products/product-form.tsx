@@ -179,20 +179,9 @@ export function ProductForm() {
               placeholder="0"
               className={fieldClass}
             />
-          </div>
-          <div>
-            <label className={labelClass} htmlFor="defaultPrice">
-              Selling price (Rs)
-            </label>
-            <input
-              id="defaultPrice"
-              name="defaultPrice"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="0"
-              className={fieldClass}
-            />
+            <p className="mt-1 text-xs text-muted">
+              The selling price is set at sale time, so you can give discounts.
+            </p>
           </div>
         </div>
       </div>

@@ -62,7 +62,6 @@ export default async function ProductsPage() {
                   <th className="px-2 py-2 font-medium">Product</th>
                   <th className="px-2 py-2 font-medium">SKU</th>
                   <th className="px-2 py-2 text-right font-medium">Cost</th>
-                  <th className="px-2 py-2 text-right font-medium">Price</th>
                   <th className="px-2 py-2 text-right font-medium">Stock</th>
                   <th className="px-2 py-2 text-right font-medium">Stock value</th>
                 </tr>
@@ -97,9 +96,6 @@ export default async function ProductsPage() {
                       <td className="px-2 py-3 text-muted">{p.sku ?? "—"}</td>
                       <td className="px-2 py-3 text-right font-mono tnum">
                         {formatRs(p.currentCost)}
-                      </td>
-                      <td className="px-2 py-3 text-right font-mono tnum">
-                        {p.defaultPrice != null ? formatRs(p.defaultPrice) : "—"}
                       </td>
                       <td className="px-2 py-3 text-right font-mono tnum">
                         <span className={low ? "text-loss" : ""}>
