@@ -34,7 +34,13 @@ export default function RootLayout({
         lang="en"
         className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
       >
-        <body className="min-h-full">{children}</body>
+        {/* suppressHydrationWarning: browser extensions (e.g. ColorZilla) add
+            attributes like cz-shortcut-listen to <body> before React hydrates.
+            This only ignores attribute mismatches on <body> itself, not its
+            children, so real hydration issues still surface. */}
+        <body className="min-h-full" suppressHydrationWarning>
+          {children}
+        </body>
       </html>
     </ClerkProvider>
   );

@@ -56,6 +56,7 @@ enum PaymentMethod {
   CASH
   CARD
   BANK_TRANSFER
+  CREDIT
   OTHER
 }
 
@@ -76,10 +77,12 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  memberships     Membership[]
-  createdSales    Sale[]          @relation("SaleCreatedBy")
-  createdExpenses Expense[]       @relation("ExpenseCreatedBy")
-  stockMovements  StockMovement[] @relation("MovementCreatedBy")
+  memberships      Membership[]
+  createdSales     Sale[]            @relation("SaleCreatedBy")
+  createdExpenses  Expense[]         @relation("ExpenseCreatedBy")
+  stockMovements   StockMovement[]   @relation("MovementCreatedBy")
+  customerPayments CustomerPayment[] @relation("PaymentCreatedBy")
+  customerCharges  CustomerCharge[]  @relation("ChargeCreatedBy")
 }
 
 model Business {
@@ -92,6 +95,7 @@ model Business {
   timezone        String         @default("Asia/Colombo")
   weekStartsOn    Int            @default(1) // 0=Sun .. 6=Sat; 1=Mon
   status          BusinessStatus @default(ACTIVE)
+  lastSaleNumber  Int            @default(0) // atomic counter for sequential sale numbers
   createdByUserId String
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -105,6 +109,9 @@ model Business {
   expenseCategories ExpenseCategory[]
   stockMovements    StockMovement[]
   invitations       Invitation[]
+  customers         Customer[]
+  customerPayments  CustomerPayment[]
+  customerCharges   CustomerCharge[]
 }
 
 model Membership {
@@ -204,6 +211,8 @@ model Sale {
   totalCogs       Int
   grossProfit     Int
   paymentMethod   PaymentMethod @default(CASH)
+  customerId      String? // set when the sale is put on a customer's credit tab
+  amountPaid      Int           @default(0) // paid up front; (total - amountPaid) is owed
   note            String?
   soldAt          DateTime      @default(now())
   createdByUserId String
@@ -213,12 +222,14 @@ model Sale {
 
   business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
   createdBy User       @relation("SaleCreatedBy", fields: [createdByUserId], references: [id])
+  customer  Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
   items     SaleItem[]
 
   @@unique([businessId, saleNumber])
   @@unique([businessId, idempotencyKey])
   @@index([businessId, soldAt])
   @@index([businessId, status])
+  @@index([businessId, customerId])
 }
 
 model SaleItem {
@@ -243,6 +254,68 @@ model SaleItem {
 
   @@index([businessId, productId])
   @@index([saleId])
+}
+
+// ===================== Customers & credit (udhaar) =====================
+
+model Customer {
+  id         String    @id @default(cuid())
+  businessId String
+  name       String
+  phone      String?
+  note       String?
+  isActive   Boolean   @default(true)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sales    Sale[]
+  payments CustomerPayment[]
+  charges  CustomerCharge[]
+
+  @@index([businessId, isActive])
+  @@index([businessId, phone])
+}
+
+// A repayment made by a customer against their outstanding credit balance.
+model CustomerPayment {
+  id              String        @id @default(cuid())
+  businessId      String
+  customerId      String
+  amount          Int // whole rupees
+  method          PaymentMethod @default(CASH)
+  note            String?
+  paidAt          DateTime      @default(now())
+  createdByUserId String
+  createdAt       DateTime      @default(now())
+
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("PaymentCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([businessId, customerId])
+  @@index([businessId, paidAt])
+}
+
+// A manual debt added to a customer's tab that isn't a catalogue sale — e.g. a
+// repair charge, an old balance carried over, or an off-catalogue item.
+model CustomerCharge {
+  id              String   @id @default(cuid())
+  businessId      String
+  customerId      String
+  amount          Int // whole rupees owed
+  reason          String // e.g. "Repair", "Old balance"
+  chargedAt       DateTime @default(now())
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("ChargeCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([businessId, customerId])
+  @@index([businessId, chargedAt])
 }
 
 // ===================== Expenses =====================

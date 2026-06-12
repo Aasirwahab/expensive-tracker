@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getActiveContext } from "@/lib/auth-context";
-import { resolveRange } from "@/lib/date-range";
+import { resolvePeriod } from "@/lib/date-range";
 import { toCsv } from "@/lib/csv";
 
 export async function GET(request: Request) {
@@ -8,9 +8,8 @@ export async function GET(request: Request) {
   if (!ctx?.business) return new Response("Unauthorized", { status: 401 });
   if (ctx.role !== "OWNER") return new Response("Forbidden", { status: 403 });
 
-  const range = resolveRange(
-    new URL(request.url).searchParams.get("range") ?? undefined,
-  );
+  const params = new URL(request.url).searchParams;
+  const { range, month } = resolvePeriod(params.get("range"), params.get("month"));
   const expenseDate = range.from
     ? { gte: range.from, lte: range.to }
     : { lte: range.to };
@@ -46,7 +45,7 @@ export async function GET(request: Request) {
   return new Response(toCsv(headers, rows), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="expenses-${range.key}.csv"`,
+      "Content-Disposition": `attachment; filename="expenses-${month ?? range.key}.csv"`,
     },
   });
 }

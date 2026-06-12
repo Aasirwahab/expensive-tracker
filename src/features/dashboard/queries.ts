@@ -102,7 +102,7 @@ export async function getDashboardData(
       select: { name: true, stockQuantity: true, lowStockThreshold: true },
     }),
     prisma.sale.findMany({
-      where: { businessId },
+      where: { businessId, status: "COMPLETED" },
       orderBy: { createdAt: "desc" },
       take: 6,
       select: {

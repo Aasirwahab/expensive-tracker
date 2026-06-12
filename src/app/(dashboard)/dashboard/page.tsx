@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { TrendingUp, PackageCheck, TriangleAlert } from "lucide-react";
 import { getActiveContext } from "@/lib/auth-context";
 import { getDashboardData } from "@/features/dashboard/queries";
-import { resolveRange, RANGE_OPTIONS } from "@/lib/date-range";
+import { resolvePeriod, RANGE_OPTIONS, currentMonthValue } from "@/lib/date-range";
+import { MonthPicker } from "@/components/ui/month-picker";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { SalesChart } from "@/components/dashboard/sales-chart";
 import { ExpenseDonut } from "@/components/dashboard/expense-donut";
@@ -37,13 +38,14 @@ function HeroStat({ label, value }: { label: string; value: string }) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; month?: string }>;
 }) {
   const ctx = await getActiveContext();
   if (!ctx?.business) return null; // layout handles the redirect to onboarding
   if (ctx.role !== "OWNER") redirect("/quick-sale");
 
-  const range = resolveRange((await searchParams).range);
+  const sp = await searchParams;
+  const { range, month } = resolvePeriod(sp.range, sp.month);
   const data = await getDashboardData(ctx.business.id, range);
   const netProfit = data.kpis.find((k) => k.key === "netProfit")!;
 
@@ -56,20 +58,27 @@ export default async function DashboardPage({
           </p>
           <p className="text-sm text-muted">Your shop — {range.label.toLowerCase()}.</p>
         </div>
-        <div className="flex items-center rounded-xl border border-line bg-surface p-0.5">
-          {RANGE_OPTIONS.map((r) => (
-            <Link
-              key={r.key}
-              href={`/dashboard?range=${r.key}`}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                range.key === r.key
-                  ? "bg-ink text-white"
-                  : "text-muted hover:text-text"
-              }`}
-            >
-              {r.label}
-            </Link>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center rounded-xl border border-line bg-surface p-0.5">
+            {RANGE_OPTIONS.map((r) => (
+              <Link
+                key={r.key}
+                href={`/dashboard?range=${r.key}`}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  !month && range.key === r.key
+                    ? "bg-ink text-white"
+                    : "text-muted hover:text-text"
+                }`}
+              >
+                {r.label}
+              </Link>
+            ))}
+          </div>
+          <MonthPicker
+            value={month ?? ""}
+            max={currentMonthValue()}
+            basePath="/dashboard"
+          />
         </div>
       </div>
 

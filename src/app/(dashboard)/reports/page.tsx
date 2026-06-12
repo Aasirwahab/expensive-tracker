@@ -1,10 +1,48 @@
 import Link from "next/link";
-import { BarChart3, Download } from "lucide-react";
+import { BarChart3, Download, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { getActiveContext } from "@/lib/auth-context";
-import { resolveRange, RANGE_OPTIONS } from "@/lib/date-range";
-import { getReportData } from "@/features/reports/queries";
-import { formatRs, formatNumber } from "@/lib/money";
+import { resolvePeriod, RANGE_OPTIONS, currentMonthValue } from "@/lib/date-range";
+import { getReportData, getMonthlyComparison } from "@/features/reports/queries";
+import { formatRs, formatNumber, formatDelta } from "@/lib/money";
 import { Panel } from "@/components/ui/panel";
+import { MonthlyChart } from "@/components/dashboard/monthly-chart";
+import { MonthPicker } from "@/components/ui/month-picker";
+
+// A small month-over-month change indicator: green up / red down / grey flat.
+function Change({ pct }: { pct: number | null }) {
+  if (pct === null) {
+    return <span className="text-xs text-muted">new</span>;
+  }
+  if (pct === 0) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-xs text-muted">
+        <Minus className="h-3 w-3" /> 0%
+      </span>
+    );
+  }
+  const up = pct > 0;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-xs font-medium ${up ? "text-brand-deep" : "text-loss"}`}
+    >
+      {up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+      {formatDelta(pct)}
+    </span>
+  );
+}
+
+function ChartLegend() {
+  return (
+    <div className="flex items-center gap-3 text-xs text-muted">
+      <span className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-ink" /> Sales
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-brand" /> Net profit
+      </span>
+    </div>
+  );
+}
 
 function Stat({
   label,
@@ -32,7 +70,7 @@ function Stat({
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; month?: string }>;
 }) {
   const ctx = await getActiveContext();
   if (!ctx?.business) return null; // layout handles the redirect to onboarding
@@ -56,10 +94,17 @@ export default async function ReportsPage({
   }
 
   const sp = await searchParams;
-  const range = resolveRange(sp.range);
-  const data = await getReportData(ctx.business.id, range.from, range.to);
-  const q = `?range=${range.key}`;
+  const { range, month } = resolvePeriod(sp.range, sp.month);
+  const [data, monthly] = await Promise.all([
+    getReportData(ctx.business.id, range.from, range.to),
+    getMonthlyComparison(ctx.business.id, 6),
+  ]);
+  const q = month ? `?month=${month}` : `?range=${range.key}`;
   const s = data.summary;
+
+  // Headline: the current month against the one before it.
+  const thisMonth = monthly[monthly.length - 1];
+  const lastMonth = monthly[monthly.length - 2];
 
   return (
     <div className="space-y-4">
@@ -68,16 +113,18 @@ export default async function ReportsPage({
           <p className="font-display text-2xl font-bold tracking-tight">
             Reports
           </p>
-          <p className="text-sm text-muted">{range.label}</p>
+          <p className="text-sm text-muted">
+            {month ? `${range.label} — full month` : range.label}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center rounded-xl border border-line bg-surface p-0.5">
             {RANGE_OPTIONS.map((r) => (
               <Link
                 key={r.key}
                 href={`/reports?range=${r.key}`}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  range.key === r.key
+                  !month && range.key === r.key
                     ? "bg-ink text-white"
                     : "text-muted hover:text-text"
                 }`}
@@ -86,6 +133,11 @@ export default async function ReportsPage({
               </Link>
             ))}
           </div>
+          <MonthPicker
+            value={month ?? ""}
+            max={currentMonthValue()}
+            basePath="/reports"
+          />
         </div>
       </div>
 
@@ -100,6 +152,85 @@ export default async function ReportsPage({
         <Stat label="Units sold" value={formatNumber(s.unitsSold)} />
         <Stat label="Avg order" value={formatRs(s.avgOrder)} />
       </div>
+
+      {/* Monthly comparison */}
+      <Panel
+        title="Monthly comparison"
+        subtitle="Last 6 months — compare month to month"
+        action={<ChartLegend />}
+      >
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+              {thisMonth.label} · Sales
+            </p>
+            <div className="mt-1 flex items-baseline justify-between gap-2">
+              <p className="font-mono text-xl font-semibold tnum">
+                {formatRs(thisMonth.sales)}
+              </p>
+              <Change pct={thisMonth.salesChangePct} />
+            </div>
+            <p className="mt-0.5 text-xs text-muted">
+              vs {lastMonth.label} · {formatRs(lastMonth.sales)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+              {thisMonth.label} · Net profit
+            </p>
+            <div className="mt-1 flex items-baseline justify-between gap-2">
+              <p className="font-mono text-xl font-semibold tnum">
+                {formatRs(thisMonth.net)}
+              </p>
+              <Change pct={thisMonth.netChangePct} />
+            </div>
+            <p className="mt-0.5 text-xs text-muted">
+              vs {lastMonth.label} · {formatRs(lastMonth.net)}
+            </p>
+          </div>
+        </div>
+
+        <MonthlyChart data={monthly} />
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                <th className="px-2 py-2 font-medium">Month</th>
+                <th className="px-2 py-2 text-right font-medium">Sales</th>
+                <th className="px-2 py-2 text-right font-medium">Gross profit</th>
+                <th className="px-2 py-2 text-right font-medium">Expenses</th>
+                <th className="px-2 py-2 text-right font-medium">Net profit</th>
+                <th className="px-2 py-2 text-right font-medium">vs prev</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...monthly].reverse().map((m) => (
+                <tr key={m.key} className="border-b border-line/60 last:border-0">
+                  <td className="px-2 py-3 font-medium">{m.label}</td>
+                  <td className="px-2 py-3 text-right font-mono tnum">
+                    {formatRs(m.sales)}
+                  </td>
+                  <td className="px-2 py-3 text-right font-mono tnum text-muted">
+                    {formatRs(m.profit)}
+                  </td>
+                  <td className="px-2 py-3 text-right font-mono tnum text-muted">
+                    {formatRs(m.expenses)}
+                  </td>
+                  <td
+                    className={`px-2 py-3 text-right font-mono tnum font-medium ${m.net < 0 ? "text-loss" : "text-brand-deep"}`}
+                  >
+                    {formatRs(m.net)}
+                  </td>
+                  <td className="px-2 py-3 text-right">
+                    <Change pct={m.netChangePct} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
 
       {/* Exports */}
       <div className="flex flex-wrap items-center gap-2">

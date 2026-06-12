@@ -9,9 +9,12 @@ import {
   ShoppingBag,
   Check,
   Printer,
+  UserPlus,
+  X,
 } from "lucide-react";
 import { formatRs } from "@/lib/money";
 import { createSale, type SaleResult } from "./actions";
+import { quickCreateCustomer } from "@/features/customers/actions";
 
 export type SaleProduct = {
   id: string;
@@ -22,6 +25,8 @@ export type SaleProduct = {
   stockQuantity: number;
   allowNegativeStock: boolean;
 };
+
+export type PickerCustomer = { id: string; name: string; phone: string | null };
 
 type CartLine = {
   productId: string;
@@ -40,12 +45,15 @@ type ReceiptData = {
   payment: string;
   items: { name: string; qty: number; price: number }[];
   total: number;
+  owed: number;
+  customerName: string | null;
 };
 
 const PAYMENTS = [
   { v: "CASH", l: "Cash" },
   { v: "CARD", l: "Card" },
   { v: "BANK_TRANSFER", l: "Bank" },
+  { v: "CREDIT", l: "Credit" },
   { v: "OTHER", l: "Other" },
 ] as const;
 
@@ -53,10 +61,12 @@ const paymentLabel = (v: string) => PAYMENTS.find((p) => p.v === v)?.l ?? v;
 
 export function QuickSale({
   products,
+  customers,
   showProfit,
   businessName,
 }: {
   products: SaleProduct[];
+  customers: PickerCustomer[];
   showProfit: boolean;
   businessName: string;
 }) {
@@ -69,6 +79,18 @@ export function QuickSale({
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const [discount, setDiscount] = useState("");
+
+  // Credit ("udhaar") sale state.
+  const [people, setPeople] = useState<PickerCustomer[]>(customers);
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [custQuery, setCustQuery] = useState("");
+  const [paidNow, setPaidNow] = useState("");
+  const [addingCustomer, startAddCustomer] = useTransition();
+
+  const selectedCustomer = people.find((c) => c.id === customerId) ?? null;
+  const isCredit = payment === "CREDIT";
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -139,17 +161,33 @@ export function QuickSale({
     return { revenue, cost, profit: revenue - cost };
   }, [cart]);
 
+  // Discount (whole rupees) is capped at the subtotal; netTotal is what's due.
+  const discountValue = Math.min(
+    Math.max(0, Math.floor(Number(discount) || 0)),
+    totals.revenue,
+  );
+  const netTotal = totals.revenue - discountValue;
+
+  // For a credit sale: how much is paid up front (clamped to the net total).
+  const paidUpFront = Math.min(
+    Math.max(0, Math.floor(Number(paidNow) || 0)),
+    netTotal,
+  );
+
   function complete() {
     setError(null);
     if (cart.length === 0) return setError("Add a product first.");
     if (cart.some((l) => l.unitPrice <= 0))
       return setError("Enter a selling price for every item.");
+    if (isCredit && !customerId)
+      return setError("Pick a customer for a credit sale.");
 
     const snapshot = cart.map((l) => ({
       name: l.name,
       qty: l.quantity,
       price: l.unitPrice,
     }));
+    const customerName = selectedCustomer?.name ?? null;
 
     startTransition(async () => {
       const res: SaleResult = await createSale({
@@ -159,6 +197,9 @@ export function QuickSale({
           unitPrice: l.unitPrice,
         })),
         paymentMethod: payment,
+        discount: discountValue,
+        customerId: isCredit ? customerId : null,
+        amountPaid: isCredit ? paidUpFront : undefined,
         idempotencyKey,
       });
       if (res.ok) {
@@ -168,9 +209,32 @@ export function QuickSale({
           payment,
           items: snapshot,
           total: res.total,
+          owed: res.owed,
+          customerName,
         });
         setCart([]);
         setIdempotencyKey(crypto.randomUUID());
+        setDiscount("");
+        setCustomerId(null);
+        setCustQuery("");
+        setPaidNow("");
+        setPayment("CASH");
+      } else {
+        setError(res.error);
+      }
+    });
+  }
+
+  function addCustomer(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed || addingCustomer) return;
+    startAddCustomer(async () => {
+      const res = await quickCreateCustomer({ name: trimmed });
+      if (res.ok) {
+        setPeople((prev) => [...prev, res.customer]);
+        setCustomerId(res.customer.id);
+        setCustQuery("");
+        setError(null);
       } else {
         setError(res.error);
       }
@@ -348,10 +412,36 @@ export function QuickSale({
         )}
 
         <div className="mt-4 space-y-1.5 border-t border-line pt-3 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted">Discount</span>
+            <div className="relative w-28">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted">
+                Rs
+              </span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+                placeholder="0"
+                className="w-full rounded-lg border border-line bg-paper py-1.5 pl-7 pr-2 text-right font-mono text-sm tnum outline-none focus:border-brand focus:bg-surface"
+              />
+            </div>
+          </div>
+          {discountValue > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted">Subtotal</span>
+              <span className="font-mono tnum text-muted">
+                {formatRs(totals.revenue)}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-muted">Total</span>
             <span className="font-mono text-lg font-semibold tnum">
-              {formatRs(totals.revenue)}
+              {formatRs(netTotal)}
             </span>
           </div>
           {showProfit && (
@@ -365,7 +455,7 @@ export function QuickSale({
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted">Profit</span>
                 <span className="font-mono font-semibold tnum text-brand-deep">
-                  {formatRs(totals.profit)}
+                  {formatRs(netTotal - totals.cost)}
                 </span>
               </div>
             </>
@@ -389,6 +479,117 @@ export function QuickSale({
           ))}
         </div>
 
+        {isCredit && (
+          <div className="mt-3 space-y-2 rounded-xl border border-line bg-paper/60 p-3">
+            {selectedCustomer ? (
+              <div className="flex items-center justify-between rounded-lg border border-line bg-surface px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
+                    {selectedCustomer.name}
+                  </p>
+                  {selectedCustomer.phone && (
+                    <p className="truncate text-xs text-muted">
+                      {selectedCustomer.phone}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCustomerId(null)}
+                  className="text-muted hover:text-loss"
+                  aria-label="Change customer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div>
+                <input
+                  value={custQuery}
+                  onChange={(e) => setCustQuery(e.target.value)}
+                  placeholder="Search or add customer…"
+                  className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-brand"
+                />
+                {(() => {
+                  const q = custQuery.trim().toLowerCase();
+                  const matches = q
+                    ? people.filter(
+                        (c) =>
+                          c.name.toLowerCase().includes(q) ||
+                          (c.phone?.includes(q) ?? false),
+                      )
+                    : people;
+                  const exact = people.some(
+                    (c) => c.name.trim().toLowerCase() === q,
+                  );
+                  return (
+                    <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto">
+                      {matches.slice(0, 6).map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setCustomerId(c.id);
+                            setCustQuery("");
+                          }}
+                          className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-surface"
+                        >
+                          <span className="truncate">{c.name}</span>
+                          {c.phone && (
+                            <span className="ml-2 shrink-0 text-xs text-muted">
+                              {c.phone}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                      {q && !exact && (
+                        <button
+                          type="button"
+                          disabled={addingCustomer}
+                          onClick={() => addCustomer(custQuery)}
+                          className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-sm font-medium text-brand-deep hover:bg-surface disabled:opacity-60"
+                        >
+                          <UserPlus className="h-3.5 w-3.5" />
+                          {addingCustomer
+                            ? "Adding…"
+                            : `Add "${custQuery.trim()}"`}
+                        </button>
+                      )}
+                      {matches.length === 0 && !q && (
+                        <p className="px-2.5 py-1.5 text-xs text-muted">
+                          No customers yet — type a name to add one.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            <div className="relative">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted">
+                Rs
+              </span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={paidNow}
+                onChange={(e) => setPaidNow(e.target.value)}
+                placeholder="Paid now (optional)"
+                className="w-full rounded-lg border border-line bg-surface py-2 pl-7 pr-2 text-right font-mono text-sm tnum outline-none focus:border-brand"
+              />
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted">Going on tab</span>
+              <span className="font-mono font-semibold tnum text-loss">
+                {formatRs(Math.max(0, netTotal - paidUpFront))}
+              </span>
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={complete}
@@ -397,7 +598,9 @@ export function QuickSale({
         >
           {pending
             ? "Saving sale…"
-            : `Complete sale · ${formatRs(totals.revenue)}`}
+            : isCredit
+              ? `Save credit sale · ${formatRs(netTotal)}`
+              : `Complete sale · ${formatRs(netTotal)}`}
         </button>
 
         {error && (
@@ -441,9 +644,26 @@ export function QuickSale({
               <span>Total</span>
               <span className="font-mono tnum">{formatRs(receipt.total)}</span>
             </div>
-            <p className="mt-1 text-center text-xs text-muted">
-              Paid by {paymentLabel(receipt.payment)}
-            </p>
+            {receipt.owed > 0 ? (
+              <div className="mt-2 space-y-0.5 rounded-lg bg-loss/10 px-3 py-2 text-xs">
+                {receipt.customerName && (
+                  <div className="flex justify-between">
+                    <span className="text-muted">Customer</span>
+                    <span className="font-medium text-text">
+                      {receipt.customerName}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold text-loss">
+                  <span>On credit (due)</span>
+                  <span className="font-mono tnum">{formatRs(receipt.owed)}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-1 text-center text-xs text-muted">
+                Paid by {paymentLabel(receipt.payment)}
+              </p>
+            )}
             <p className="mt-3 flex items-center justify-center gap-1 text-center text-xs font-medium text-brand-deep">
               <Check className="h-3.5 w-3.5" /> Thank you!
             </p>

@@ -1,16 +1,20 @@
 import { getActiveContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/db";
 import { QuickSale, type SaleProduct } from "@/features/sales/quick-sale";
+import { listCustomersForPicker } from "@/features/customers/queries";
 
 export default async function QuickSalePage() {
   const ctx = await getActiveContext();
   if (!ctx?.business) return null; // layout handles the redirect to onboarding
   const isOwner = ctx.role === "OWNER";
 
-  const products = await prisma.product.findMany({
-    where: { businessId: ctx.business.id, archivedAt: null, isActive: true },
-    orderBy: { name: "asc" },
-  });
+  const [products, customers] = await Promise.all([
+    prisma.product.findMany({
+      where: { businessId: ctx.business.id, archivedAt: null, isActive: true },
+      orderBy: { name: "asc" },
+    }),
+    listCustomersForPicker(ctx.business.id),
+  ]);
 
   // Cost is owner-only: never send it to a staff member's browser.
   const saleProducts: SaleProduct[] = products.map((p) => ({
@@ -35,6 +39,7 @@ export default async function QuickSalePage() {
       </div>
       <QuickSale
         products={saleProducts}
+        customers={customers}
         showProfit={isOwner}
         businessName={ctx.business.name}
       />

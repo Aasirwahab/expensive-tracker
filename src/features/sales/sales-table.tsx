@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { ChevronDown, Search, Undo2 } from "lucide-react";
 import { formatRs, formatNumber } from "@/lib/money";
+import { voidSale } from "./actions";
 
 export type SaleRow = {
   id: string;
@@ -28,9 +29,11 @@ const FILTERS = ["ALL", "CASH", "CARD", "BANK_TRANSFER", "OTHER"] as const;
 export function SalesTable({
   sales,
   showProfit,
+  canVoid = false,
 }: {
   sales: SaleRow[];
   showProfit: boolean;
+  canVoid?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [payment, setPayment] = useState<string>("ALL");
@@ -117,6 +120,7 @@ export function SalesTable({
                   units={units}
                   colSpan={colSpan}
                   showProfit={showProfit}
+                  canVoid={canVoid}
                   onToggle={() => setOpen(isOpen ? null : s.id)}
                 />
               );
@@ -139,6 +143,7 @@ function FragmentRow({
   units,
   colSpan,
   showProfit,
+  canVoid,
   onToggle,
 }: {
   sale: SaleRow;
@@ -146,20 +151,27 @@ function FragmentRow({
   units: number;
   colSpan: number;
   showProfit: boolean;
+  canVoid: boolean;
   onToggle: () => void;
 }) {
+  const voided = sale.status === "VOIDED";
   return (
     <>
       <tr
         onClick={onToggle}
-        className="cursor-pointer border-b border-line/60 transition hover:bg-paper"
+        className={`cursor-pointer border-b border-line/60 transition hover:bg-paper ${voided ? "opacity-55" : ""}`}
       >
         <td className="px-2 py-3 font-medium">
           <span className="flex items-center gap-1.5">
             <ChevronDown
               className={`h-3.5 w-3.5 text-muted transition ${isOpen ? "rotate-180" : ""}`}
             />
-            #{sale.saleNumber}
+            <span className={voided ? "line-through" : ""}>#{sale.saleNumber}</span>
+            {voided && (
+              <span className="rounded-full bg-loss/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-loss">
+                Voided
+              </span>
+            )}
           </span>
         </td>
         <td className="whitespace-nowrap px-2 py-3 text-muted">{sale.soldAt}</td>
@@ -201,9 +213,68 @@ function FragmentRow({
                 </li>
               ))}
             </ul>
+            {canVoid && !voided && (
+              <div className="mt-2 flex justify-end border-t border-line/60 px-1 pt-2">
+                <VoidControl saleId={sale.id} saleNumber={sale.saleNumber} />
+              </div>
+            )}
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+function VoidControl({
+  saleId,
+  saleNumber,
+}: {
+  saleId: string;
+  saleNumber: string;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  if (confirming) {
+    return (
+      <span className="flex flex-wrap items-center justify-end gap-2 text-xs">
+        {error && <span className="text-loss">{error}</span>}
+        <span className="text-muted">
+          Void sale #{saleNumber}? Stock goes back.
+        </span>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              const res = await voidSale(saleId);
+              if (!res.ok) setError(res.error ?? "Could not void.");
+              else setConfirming(false);
+            })
+          }
+          className="font-semibold text-loss disabled:opacity-50"
+        >
+          {pending ? "Voiding…" : "Yes, void"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirming(false)}
+          className="text-muted"
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setConfirming(true)}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-muted transition hover:border-loss hover:text-loss"
+    >
+      <Undo2 className="h-3.5 w-3.5" /> Void sale
+    </button>
   );
 }

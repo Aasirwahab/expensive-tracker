@@ -15,7 +15,13 @@ const schema = z.object({
       }),
     )
     .min(1, "Add at least one product."),
-  paymentMethod: z.enum(["CASH", "CARD", "BANK_TRANSFER", "OTHER"]),
+  paymentMethod: z.enum(["CASH", "CARD", "BANK_TRANSFER", "CREDIT", "OTHER"]),
+  // Whole-sale discount in rupees, knocked off the subtotal.
+  discount: z.coerce.number().int().min(0).max(2_000_000_000).optional(),
+  // Credit ("udhaar") sale: put on a customer's tab. customerId is required
+  // when paymentMethod is CREDIT; amountPaid is whatever was paid up front.
+  customerId: z.string().min(1).optional().nullable(),
+  amountPaid: z.coerce.number().int().min(0).max(2_000_000_000).optional(),
   idempotencyKey: z.string().min(8).max(64),
 });
 
@@ -26,6 +32,7 @@ export type SaleResult =
       saleNumber: string;
       total: number;
       profit: number;
+      owed: number; // unpaid remainder for a credit sale (0 for paid-in-full)
     }
   | { ok: false; error: string };
 
@@ -45,6 +52,18 @@ export async function createSale(input: unknown): Promise<SaleResult> {
   const { items, paymentMethod, idempotencyKey } = parsed.data;
   const businessId = ctx.business.id;
   const userId = ctx.user.id;
+  const isCredit = paymentMethod === "CREDIT";
+
+  if (isCredit && !parsed.data.customerId) {
+    return { ok: false, error: "Pick a customer for a credit sale." };
+  }
+  if (isCredit) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: parsed.data.customerId!, businessId, archivedAt: null },
+      select: { id: true },
+    });
+    if (!customer) return { ok: false, error: "Customer not found." };
+  }
 
   // Idempotency: if this exact submission already created a sale, return it.
   const existing = await prisma.sale.findFirst({
@@ -57,6 +76,7 @@ export async function createSale(input: unknown): Promise<SaleResult> {
       saleNumber: existing.saleNumber,
       total: existing.total,
       profit: existing.grossProfit,
+      owed: existing.total - existing.amountPaid,
     };
   }
 
@@ -87,7 +107,9 @@ export async function createSale(input: unknown): Promise<SaleResult> {
           lineProfit: lineRevenue - lineCogs,
         };
       });
-      const total = subtotal;
+      // Discount is capped at the subtotal so the total can never go negative.
+      const discount = Math.min(parsed.data.discount ?? 0, subtotal);
+      const total = subtotal - discount;
       const grossProfit = total - totalCogs;
 
       // Conditional stock decrement — can never oversell the last unit.
@@ -112,8 +134,21 @@ export async function createSale(input: unknown): Promise<SaleResult> {
         }
       }
 
-      const count = await tx.sale.count({ where: { businessId } });
-      const saleNumber = String(count + 1);
+      // Atomic, race-free sale numbering: the row-level lock on the Business
+      // row serializes concurrent sales so two staff can never get the same
+      // number (which would violate the unique [businessId, saleNumber]).
+      const biz = await tx.business.update({
+        where: { id: businessId },
+        data: { lastSaleNumber: { increment: 1 } },
+        select: { lastSaleNumber: true },
+      });
+      const saleNumber = String(biz.lastSaleNumber);
+
+      // Non-credit sales are paid in full. Credit sales record the up-front
+      // amount (0..total); the remainder is owed on the customer's tab.
+      const amountPaid = isCredit
+        ? Math.min(parsed.data.amountPaid ?? 0, total)
+        : total;
 
       const sale = await tx.sale.create({
         data: {
@@ -121,11 +156,13 @@ export async function createSale(input: unknown): Promise<SaleResult> {
           saleNumber,
           status: "COMPLETED",
           subtotal,
-          discount: 0,
+          discount,
           total,
           totalCogs,
           grossProfit,
           paymentMethod,
+          customerId: isCredit ? parsed.data.customerId : null,
+          amountPaid,
           idempotencyKey,
           createdByUserId: userId,
           items: {
@@ -162,12 +199,13 @@ export async function createSale(input: unknown): Promise<SaleResult> {
         });
       }
 
-      return { saleId: sale.id, saleNumber, total, grossProfit };
+      return { saleId: sale.id, saleNumber, total, grossProfit, amountPaid };
     });
 
     revalidatePath("/dashboard");
     revalidatePath("/products");
     revalidatePath("/sales");
+    if (isCredit) revalidatePath("/customers");
 
     return {
       ok: true,
@@ -175,11 +213,78 @@ export async function createSale(input: unknown): Promise<SaleResult> {
       saleNumber: result.saleNumber,
       total: result.total,
       profit: result.grossProfit,
+      owed: result.total - result.amountPaid,
     };
   } catch (e) {
     return {
       ok: false,
       error: e instanceof Error ? e.message : "Could not complete the sale.",
+    };
+  }
+}
+
+/**
+ * Void a completed sale: put the stock back, record REVERSAL movements, and
+ * mark the sale VOIDED. If it was a credit sale, the customer's outstanding
+ * balance corrects itself automatically (balances only count COMPLETED sales).
+ * Owner-only — voiding affects revenue, profit, and receivables.
+ */
+export async function voidSale(
+  saleId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await getActiveContext();
+  if (!ctx?.business) return { ok: false, error: "No active business." };
+  if (ctx.role !== "OWNER") {
+    return { ok: false, error: "Only the owner can void a sale." };
+  }
+
+  const businessId = ctx.business.id;
+  const userId = ctx.user.id;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const sale = await tx.sale.findFirst({
+        where: { id: saleId, businessId },
+        include: { items: true },
+      });
+      if (!sale) throw new Error("Sale not found.");
+      if (sale.status === "VOIDED") throw new Error("This sale is already voided.");
+
+      for (const item of sale.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stockQuantity: { increment: item.quantity } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            businessId,
+            productId: item.productId,
+            type: "REVERSAL",
+            quantityDelta: item.quantity, // positive: stock returns
+            unitCost: item.unitCost,
+            referenceType: "sale",
+            referenceId: sale.id,
+            note: `Void of sale ${sale.saleNumber}`,
+            createdByUserId: userId,
+          },
+        });
+      }
+
+      await tx.sale.update({
+        where: { id: sale.id },
+        data: { status: "VOIDED" },
+      });
+    });
+
+    revalidatePath("/sales");
+    revalidatePath("/dashboard");
+    revalidatePath("/products");
+    revalidatePath("/customers");
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Could not void the sale.",
     };
   }
 }

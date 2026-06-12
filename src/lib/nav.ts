@@ -7,6 +7,7 @@ import {
   Wallet,
   BarChart3,
   Users,
+  UserCircle,
   Settings,
 } from "lucide-react";
 
@@ -21,6 +22,7 @@ export const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, ownerOnly: true },
   { label: "Quick Sale", href: "/quick-sale", icon: Zap },
   { label: "Sales", href: "/sales", icon: ReceiptText },
+  { label: "Customers", href: "/customers", icon: UserCircle, ownerOnly: true },
   { label: "Products", href: "/products", icon: Package },
   { label: "Expenses", href: "/expenses", icon: Wallet, ownerOnly: true },
   { label: "Reports", href: "/reports", icon: BarChart3, ownerOnly: true },

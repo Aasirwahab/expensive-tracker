@@ -1,5 +1,94 @@
 import { prisma } from "@/lib/db";
 
+export type MonthlyRow = {
+  key: string; // "2026-06"
+  label: string; // "Jun 2026"
+  short: string; // "Jun"
+  sales: number; // gross revenue (completed sales)
+  profit: number; // gross profit
+  expenses: number; // active expenses
+  net: number; // profit - expenses
+  salesCount: number;
+  salesChangePct: number | null; // vs previous month; null = no baseline
+  netChangePct: number | null;
+};
+
+function pctChange(prev: number, curr: number): number | null {
+  if (prev === 0) return curr === 0 ? 0 : null; // null = "new" (nothing to compare to)
+  return Math.round(((curr - prev) / Math.abs(prev)) * 1000) / 10;
+}
+
+/**
+ * A month-by-month breakdown of sales, profit, expenses and net profit for the
+ * last `monthsBack` calendar months, with month-over-month % change. Month
+ * boundaries use server-local time, consistent with the rest of the app's
+ * date ranges (see lib/date-range.ts).
+ */
+export async function getMonthlyComparison(
+  businessId: string,
+  monthsBack = 6,
+): Promise<MonthlyRow[]> {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - (monthsBack - 1), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  const [sales, expenses] = await Promise.all([
+    prisma.sale.findMany({
+      where: { businessId, status: "COMPLETED", soldAt: { gte: start, lte: end } },
+      select: { total: true, grossProfit: true, soldAt: true },
+    }),
+    prisma.expense.findMany({
+      where: { businessId, status: "ACTIVE", expenseDate: { gte: start, lte: end } },
+      select: { amount: true, expenseDate: true },
+    }),
+  ]);
+
+  const keyOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+  const months: MonthlyRow[] = [];
+  const indexByKey = new Map<string, number>();
+  for (let i = 0; i < monthsBack; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - (monthsBack - 1) + i, 1);
+    indexByKey.set(keyOf(d), months.length);
+    months.push({
+      key: keyOf(d),
+      label: d.toLocaleDateString("en-GB", { month: "short", year: "numeric" }),
+      short: d.toLocaleDateString("en-GB", { month: "short" }),
+      sales: 0,
+      profit: 0,
+      expenses: 0,
+      net: 0,
+      salesCount: 0,
+      salesChangePct: null,
+      netChangePct: null,
+    });
+  }
+
+  for (const s of sales) {
+    const idx = indexByKey.get(keyOf(s.soldAt));
+    if (idx === undefined) continue;
+    months[idx].sales += s.total;
+    months[idx].profit += s.grossProfit;
+    months[idx].salesCount += 1;
+  }
+  for (const e of expenses) {
+    const idx = indexByKey.get(keyOf(e.expenseDate));
+    if (idx === undefined) continue;
+    months[idx].expenses += e.amount;
+  }
+
+  for (let i = 0; i < months.length; i++) {
+    months[i].net = months[i].profit - months[i].expenses;
+    if (i > 0) {
+      months[i].salesChangePct = pctChange(months[i - 1].sales, months[i].sales);
+      months[i].netChangePct = pctChange(months[i - 1].net, months[i].net);
+    }
+  }
+
+  return months;
+}
+
 export type ReportData = {
   summary: {
     grossSales: number;
