@@ -14,6 +14,10 @@ export type SaleRow = {
   total: number;
   profit: number | null;
   status: string;
+  customerName?: string | null; // set for credit sales
+  // Live credit status (owner only; null for staff and non-credit sales).
+  creditSettled?: boolean | null; // true when the customer's whole tab is clear
+  customerOwes?: number | null; // customer's current total outstanding balance
   items: { name: string; quantity: number; unitPrice: number }[];
 };
 
@@ -21,10 +25,11 @@ const PAYMENT_LABEL: Record<string, string> = {
   CASH: "Cash",
   CARD: "Card",
   BANK_TRANSFER: "Bank",
+  CREDIT: "Credit",
   OTHER: "Other",
 };
 
-const FILTERS = ["ALL", "CASH", "CARD", "BANK_TRANSFER", "OTHER"] as const;
+const FILTERS = ["ALL", "CASH", "CARD", "BANK_TRANSFER", "CREDIT", "OTHER"] as const;
 
 export function SalesTable({
   sales,
@@ -213,6 +218,40 @@ function FragmentRow({
                 </li>
               ))}
             </ul>
+            {sale.payment === "CREDIT" && !voided && (
+              <div className="mt-2 flex items-center gap-1.5 px-1 text-xs">
+                {sale.creditSettled == null ? (
+                  // Staff view: just the fact it's on credit, no balance.
+                  <>
+                    <span className="rounded-full bg-ink/5 px-2 py-0.5 font-medium text-muted">
+                      On credit
+                    </span>
+                    <span className="text-muted">
+                      {sale.customerName ?? "Customer"}
+                    </span>
+                  </>
+                ) : sale.creditSettled ? (
+                  <>
+                    <span className="rounded-full bg-brand/10 px-2 py-0.5 font-medium text-brand-deep">
+                      Settled
+                    </span>
+                    <span className="text-muted">
+                      {sale.customerName ?? "Customer"} · tab clear
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="rounded-full bg-loss/10 px-2 py-0.5 font-medium text-loss">
+                      On credit
+                    </span>
+                    <span className="text-muted">
+                      {sale.customerName ?? "Customer"} · owes{" "}
+                      {formatRs(sale.customerOwes ?? 0)}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
             {canVoid && !voided && (
               <div className="mt-2 flex justify-end border-t border-line/60 px-1 pt-2">
                 <VoidControl saleId={sale.id} saleNumber={sale.saleNumber} />

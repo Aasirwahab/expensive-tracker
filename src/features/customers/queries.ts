@@ -157,12 +157,70 @@ export async function getCustomerLedger(
   return entries.sort((a, b) => b.at - a.at);
 }
 
-/** Minimal customer list for the Quick Sale picker — no balances (staff-safe). */
-export async function listCustomersForPicker(businessId: string) {
+/** Net outstanding balance per customer (customerId -> balance), computed from
+ * credit sales + manual charges − payments. Shared by the picker and could back
+ * any other balance lookup. */
+export async function getCustomerBalanceMap(
+  businessId: string,
+): Promise<Map<string, number>> {
+  const [saleAgg, payAgg, chargeAgg] = await Promise.all([
+    prisma.sale.groupBy({
+      by: ["customerId"],
+      where: { businessId, status: "COMPLETED", customerId: { not: null } },
+      _sum: { total: true, amountPaid: true },
+    }),
+    prisma.customerPayment.groupBy({
+      by: ["customerId"],
+      where: { businessId },
+      _sum: { amount: true },
+    }),
+    prisma.customerCharge.groupBy({
+      by: ["customerId"],
+      where: { businessId },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const map = new Map<string, number>();
+  for (const s of saleAgg) {
+    if (!s.customerId) continue;
+    map.set(
+      s.customerId,
+      (map.get(s.customerId) ?? 0) + (s._sum.total ?? 0) - (s._sum.amountPaid ?? 0),
+    );
+  }
+  for (const ch of chargeAgg) {
+    map.set(ch.customerId, (map.get(ch.customerId) ?? 0) + (ch._sum.amount ?? 0));
+  }
+  for (const p of payAgg) {
+    map.set(p.customerId, (map.get(p.customerId) ?? 0) - (p._sum.amount ?? 0));
+  }
+  return map;
+}
+
+export type PickerCustomer = {
+  id: string;
+  name: string;
+  phone: string | null;
+  balance: number | null; // null when balances are hidden (staff)
+};
+
+/**
+ * Customer list for the Quick Sale picker. Pass `withBalances` only for owners —
+ * staff must never receive financial figures, so they get name/phone only.
+ */
+export async function listCustomersForPicker(
+  businessId: string,
+  withBalances = false,
+): Promise<PickerCustomer[]> {
   const customers = await prisma.customer.findMany({
     where: { businessId, archivedAt: null },
     orderBy: { name: "asc" },
     select: { id: true, name: true, phone: true },
   });
-  return customers;
+  if (!withBalances) {
+    return customers.map((c) => ({ ...c, balance: null }));
+  }
+  const balances = await getCustomerBalanceMap(businessId);
+  return customers.map((c) => ({ ...c, balance: balances.get(c.id) ?? 0 }));
 }

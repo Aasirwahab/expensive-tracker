@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
+import Link from "next/link";
 import {
   Plus,
   Search,
@@ -10,6 +11,7 @@ import {
   HandCoins,
   ReceiptText,
   ChevronDown,
+  Zap,
   X,
 } from "lucide-react";
 import { formatRs } from "@/lib/money";
@@ -333,6 +335,14 @@ function RowGroup({
       {isOpen && (
         <tr className="border-b border-line/60 bg-paper/40">
           <td colSpan={4} className="px-4 py-3">
+            <div className="mb-3">
+              <Link
+                href={`/quick-sale?customer=${c.id}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-ink-soft"
+              >
+                <Zap className="h-3.5 w-3.5" /> New credit sale
+              </Link>
+            </div>
             <div className="mb-2 flex flex-wrap gap-4 text-xs text-muted">
               <span>
                 Billed on credit{" "}

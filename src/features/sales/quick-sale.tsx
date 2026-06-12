@@ -26,7 +26,19 @@ export type SaleProduct = {
   allowNegativeStock: boolean;
 };
 
-export type PickerCustomer = { id: string; name: string; phone: string | null };
+export type PickerCustomer = {
+  id: string;
+  name: string;
+  phone: string | null;
+  balance: number | null; // outstanding owed; null when hidden from staff
+};
+
+// Short balance label for the customer picker (owner view).
+function balanceLabel(b: number): { text: string; cls: string } {
+  if (b > 0) return { text: `owes ${formatRs(b)}`, cls: "text-loss" };
+  if (b < 0) return { text: `${formatRs(-b)} adv`, cls: "text-brand-deep" };
+  return { text: "no dues", cls: "text-muted" };
+}
 
 type CartLine = {
   productId: string;
@@ -64,15 +76,20 @@ export function QuickSale({
   customers,
   showProfit,
   businessName,
+  initialCustomerId = null,
 }: {
   products: SaleProduct[];
   customers: PickerCustomer[];
   showProfit: boolean;
   businessName: string;
+  initialCustomerId?: string | null;
 }) {
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [payment, setPayment] = useState<string>("CASH");
+  // Arriving with a customer (from the Customers page) starts a credit sale.
+  const [payment, setPayment] = useState<string>(
+    initialCustomerId ? "CREDIT" : "CASH",
+  );
   const [idempotencyKey, setIdempotencyKey] = useState(() =>
     crypto.randomUUID(),
   );
@@ -84,7 +101,7 @@ export function QuickSale({
 
   // Credit ("udhaar") sale state.
   const [people, setPeople] = useState<PickerCustomer[]>(customers);
-  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [customerId, setCustomerId] = useState<string | null>(initialCustomerId);
   const [custQuery, setCustQuery] = useState("");
   const [paidNow, setPaidNow] = useState("");
   const [addingCustomer, startAddCustomer] = useTransition();
@@ -231,7 +248,8 @@ export function QuickSale({
     startAddCustomer(async () => {
       const res = await quickCreateCustomer({ name: trimmed });
       if (res.ok) {
-        setPeople((prev) => [...prev, res.customer]);
+        // A brand-new customer has no balance yet.
+        setPeople((prev) => [...prev, { ...res.customer, balance: 0 }]);
         setCustomerId(res.customer.id);
         setCustQuery("");
         setError(null);
@@ -481,6 +499,12 @@ export function QuickSale({
 
         {isCredit && (
           <div className="mt-3 space-y-2 rounded-xl border border-line bg-paper/60 p-3">
+            <p className="text-xs font-medium text-muted">
+              On credit (Khata) —{" "}
+              {selectedCustomer
+                ? `${selectedCustomer.name} pays later`
+                : "pick who pays later"}
+            </p>
             {selectedCustomer ? (
               <div className="flex items-center justify-between rounded-lg border border-line bg-surface px-3 py-2">
                 <div className="min-w-0">
@@ -490,6 +514,13 @@ export function QuickSale({
                   {selectedCustomer.phone && (
                     <p className="truncate text-xs text-muted">
                       {selectedCustomer.phone}
+                    </p>
+                  )}
+                  {showProfit && selectedCustomer.balance != null && (
+                    <p
+                      className={`truncate text-xs ${balanceLabel(selectedCustomer.balance).cls}`}
+                    >
+                      Currently {balanceLabel(selectedCustomer.balance).text}
                     </p>
                   )}
                 </div>
@@ -535,11 +566,17 @@ export function QuickSale({
                           className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-surface"
                         >
                           <span className="truncate">{c.name}</span>
-                          {c.phone && (
+                          {showProfit && c.balance != null ? (
+                            <span
+                              className={`ml-2 shrink-0 text-xs ${balanceLabel(c.balance).cls}`}
+                            >
+                              {balanceLabel(c.balance).text}
+                            </span>
+                          ) : c.phone ? (
                             <span className="ml-2 shrink-0 text-xs text-muted">
                               {c.phone}
                             </span>
-                          )}
+                          ) : null}
                         </button>
                       ))}
                       {q && !exact && (

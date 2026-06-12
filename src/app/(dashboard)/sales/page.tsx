@@ -3,6 +3,7 @@ import { getActiveContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/db";
 import { formatRs, formatNumber } from "@/lib/money";
 import { resolvePeriod, RANGE_OPTIONS, currentMonthValue } from "@/lib/date-range";
+import { getCustomerBalanceMap } from "@/features/customers/queries";
 import { Panel } from "@/components/ui/panel";
 import { MonthPicker } from "@/components/ui/month-picker";
 import { SalesTable, type SaleRow } from "@/features/sales/sales-table";
@@ -37,13 +38,14 @@ export default async function SalesPage({
     ...(range.from ? { soldAt: { gte: range.from, lte: range.to } } : {}),
   };
 
-  const [sales, totals] = await Promise.all([
+  const [sales, totals, balanceMap] = await Promise.all([
     prisma.sale.findMany({
       where: baseWhere,
       orderBy: { soldAt: "desc" },
       take: 100,
       include: {
         createdBy: { select: { displayName: true } },
+        customer: { select: { name: true } },
         items: {
           select: {
             productNameSnapshot: true,
@@ -61,23 +63,37 @@ export default async function SalesPage({
       _sum: { total: true, grossProfit: true },
       _count: true,
     }),
+    // Live customer balances drive the credit "settled/owes" status — owner
+    // only, since it aggregates financial data staff must not see.
+    isOwner ? getCustomerBalanceMap(businessId) : Promise.resolve(null),
   ]);
 
-  const rows: SaleRow[] = sales.map((s) => ({
-    id: s.id,
-    saleNumber: s.saleNumber,
-    soldAt: dtFmt.format(s.soldAt),
-    staff: s.createdBy.displayName,
-    payment: String(s.paymentMethod),
-    total: s.total,
-    profit: isOwner ? s.grossProfit : null, // cost/profit is owner-only
-    status: String(s.status),
-    items: s.items.map((i) => ({
-      name: i.productNameSnapshot,
-      quantity: i.quantity,
-      unitPrice: i.unitPrice,
-    })),
-  }));
+  const rows: SaleRow[] = sales.map((s) => {
+    const isCredit = s.paymentMethod === "CREDIT";
+    // Customer's current total tab — null for staff or non-credit sales.
+    const customerOwes =
+      isCredit && balanceMap && s.customerId
+        ? (balanceMap.get(s.customerId) ?? 0)
+        : null;
+    return {
+      id: s.id,
+      saleNumber: s.saleNumber,
+      soldAt: dtFmt.format(s.soldAt),
+      staff: s.createdBy.displayName,
+      payment: String(s.paymentMethod),
+      total: s.total,
+      profit: isOwner ? s.grossProfit : null, // cost/profit is owner-only
+      status: String(s.status),
+      customerName: s.customer?.name ?? null,
+      creditSettled: customerOwes == null ? null : customerOwes <= 0,
+      customerOwes,
+      items: s.items.map((i) => ({
+        name: i.productNameSnapshot,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+      })),
+    };
+  });
 
   const count = totals._count;
   const totalRevenue = totals._sum.total ?? 0;
