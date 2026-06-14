@@ -1,12 +1,16 @@
 import { redirect } from "next/navigation";
 import { BookText } from "lucide-react";
 import { getActiveContext } from "@/lib/auth-context";
+import { hasAccess } from "@/lib/access";
 import { OnboardingForm } from "@/features/businesses/onboarding-form";
 
 export default async function OnboardingPage() {
   const ctx = await getActiveContext();
   if (!ctx) redirect("/sign-in");
   if (ctx.business) redirect("/dashboard");
+
+  // Developer gate: only approved emails (or super admins) may create a shop.
+  if (!(await hasAccess(ctx.user.email))) redirect("/no-access");
 
   return (
     <div className="ledger-bg flex min-h-screen items-center justify-center px-4 py-10">

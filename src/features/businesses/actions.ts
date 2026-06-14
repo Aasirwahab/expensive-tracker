@@ -4,6 +4,7 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { syncUser } from "@/lib/auth-context";
+import { hasAccess } from "@/lib/access";
 
 // Default operating-expense categories every new business starts with (plan §9.6).
 const DEFAULT_EXPENSE_CATEGORIES = [
@@ -47,6 +48,13 @@ export async function createBusiness(
 ): Promise<CreateBusinessState> {
   const user = await syncUser();
   if (!user) return { error: "You must be signed in." };
+
+  // Developer gate (re-checked server-side so the UI can't be bypassed).
+  if (!(await hasAccess(user.email))) {
+    return {
+      error: "Your account isn't activated yet. Please contact the provider.",
+    };
+  }
 
   const parsed = schema.safeParse({
     name: formData.get("name"),

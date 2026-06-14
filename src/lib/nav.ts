@@ -9,6 +9,7 @@ import {
   Users,
   UserCircle,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 
 export type NavItem = {
@@ -16,6 +17,7 @@ export type NavItem = {
   href: string;
   icon: LucideIcon;
   ownerOnly?: boolean;
+  superAdminOnly?: boolean;
 };
 
 export const navItems: NavItem[] = [
@@ -28,4 +30,5 @@ export const navItems: NavItem[] = [
   { label: "Reports", href: "/reports", icon: BarChart3, ownerOnly: true },
   { label: "Team", href: "/team", icon: Users, ownerOnly: true },
   { label: "Settings", href: "/settings", icon: Settings, ownerOnly: true },
+  { label: "Admin", href: "/admin", icon: ShieldCheck, superAdminOnly: true },
 ];

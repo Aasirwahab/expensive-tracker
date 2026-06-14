@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getActiveContext } from "@/lib/auth-context";
+import { isSuperAdmin } from "@/lib/access";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 
@@ -11,6 +12,8 @@ export default async function DashboardLayout({
   const ctx = await getActiveContext();
   if (!ctx) redirect("/sign-in");
   if (!ctx.business) redirect("/onboarding");
+  // Suspended shop (client cut off by the developer) → lock out owner + staff.
+  if (ctx.business.status !== "ACTIVE") redirect("/no-access");
 
   return (
     <div className="flex min-h-screen">
@@ -18,6 +21,7 @@ export default async function DashboardLayout({
         businessName={ctx.business.name}
         businessType={ctx.business.businessType}
         role={ctx.role}
+        isSuperAdmin={isSuperAdmin(ctx.user.email)}
       />
       <div className="ledger-bg flex min-h-screen flex-1 flex-col">
         <Topbar />

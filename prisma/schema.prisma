@@ -66,6 +66,12 @@ enum InvitationStatus {
   REVOKED
 }
 
+// Developer-controlled gate: who is allowed to use the app at all.
+enum AccessStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 // ===================== Identity & tenancy =====================
 
 model User {
@@ -370,4 +376,18 @@ model Invitation {
 
   @@unique([businessId, email])
   @@index([email])
+}
+
+// ===================== App access (developer gate) =====================
+
+// One row per email the developer has approved to use the app. Created/managed
+// from the super-admin /admin page. An email must have an ACTIVE grant (or be a
+// super admin) to get past onboarding and create a shop.
+model AccessGrant {
+  id        String       @id @default(cuid())
+  email     String       @unique // always stored lowercased
+  status    AccessStatus @default(ACTIVE)
+  note      String? // free text, e.g. "Sold to Yousuf Trader"
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 }

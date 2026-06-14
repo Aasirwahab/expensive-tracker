@@ -21,14 +21,18 @@ export function Sidebar({
   businessName,
   businessType,
   role,
+  isSuperAdmin = false,
 }: {
   businessName: string;
   businessType?: string | null;
   role?: string | null;
+  isSuperAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const items = navItems.filter(
-    (item) => !item.ownerOnly || role === "OWNER",
+    (item) =>
+      (!item.ownerOnly || role === "OWNER") &&
+      (!item.superAdminOnly || isSuperAdmin),
   );
 
   return (

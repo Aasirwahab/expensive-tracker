@@ -4,6 +4,7 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 // is a default export + `config`, which matches the proxy file convention.
 const isProtectedRoute = createRouteMatcher([
   "/onboarding(.*)",
+  "/admin(.*)",
   "/dashboard(.*)",
   "/quick-sale(.*)",
   "/sales(.*)",
