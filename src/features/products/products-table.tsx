@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { Package, Pencil, Trash2, X } from "lucide-react";
 import { formatRs, formatNumber } from "@/lib/money";
+import { thumbUrl } from "@/lib/image";
 import { ImageDropzone } from "./image-dropzone";
 import {
   updateProduct,
@@ -76,7 +77,7 @@ export function ProductsTable({
                     {p.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={p.imageUrl}
+                        src={thumbUrl(p.imageUrl, 96)}
                         alt=""
                         className="h-9 w-9 shrink-0 rounded-lg object-cover"
                       />

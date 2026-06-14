@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { formatRs } from "@/lib/money";
+import { thumbUrl } from "@/lib/image";
 import { createSale, type SaleResult } from "./actions";
 import { quickCreateCustomer } from "@/features/customers/actions";
 
@@ -295,7 +296,7 @@ export function QuickSale({
                     {p.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={p.imageUrl}
+                        src={thumbUrl(p.imageUrl, 240)}
                         alt=""
                         className="h-full w-full object-cover"
                       />
@@ -357,7 +358,7 @@ export function QuickSale({
                   {l.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={l.imageUrl}
+                      src={thumbUrl(l.imageUrl, 80)}
                       alt=""
                       className="h-full w-full object-cover"
                     />

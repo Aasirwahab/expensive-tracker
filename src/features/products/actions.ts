@@ -7,14 +7,15 @@ import { getActiveContext } from "@/lib/auth-context";
 
 export type ProductFormState = { error: string | null; ok?: boolean };
 
-// Photo arrives as a small resized data URL from the browser.
+// Photo arrives as an ImageKit CDN URL (new uploads). Older products may still
+// carry a small inline data URL until they're migrated — accept both.
 function readImage(formData: FormData): string | null {
   const raw = formData.get("imageUrl");
-  return typeof raw === "string" &&
-    raw.startsWith("data:image/") &&
-    raw.length <= 300_000
-    ? raw
-    : null;
+  if (typeof raw !== "string" || !raw) return null;
+  const endpoint = process.env.NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT;
+  if (endpoint && raw.startsWith(endpoint) && raw.length <= 2_000) return raw;
+  if (raw.startsWith("data:image/") && raw.length <= 300_000) return raw;
+  return null;
 }
 
 const optionalThreshold = z.coerce.number().int().min(0).max(1_000_000).optional();
