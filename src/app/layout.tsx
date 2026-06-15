@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Bricolage_Grotesque } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { getT } from "@/lib/i18n/server";
+import { dirFor } from "@/lib/i18n/config";
+import { LanguageProvider } from "@/lib/i18n/client";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,15 +26,18 @@ export const metadata: Metadata = {
   description: "Record sales, expenses, stock, and profit in seconds.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { locale, dict } = await getT();
+
   return (
     <ClerkProvider>
       <html
-        lang="en"
+        lang={locale}
+        dir={dirFor(locale)}
         className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
       >
         {/* suppressHydrationWarning: browser extensions (e.g. ColorZilla) add
@@ -39,7 +45,9 @@ export default function RootLayout({
             This only ignores attribute mismatches on <body> itself, not its
             children, so real hydration issues still surface. */}
         <body className="min-h-full" suppressHydrationWarning>
-          {children}
+          <LanguageProvider locale={locale} dict={dict}>
+            {children}
+          </LanguageProvider>
         </body>
       </html>
     </ClerkProvider>

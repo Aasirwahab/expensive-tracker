@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BookText, ChevronsUpDown } from "lucide-react";
 import { navItems } from "@/lib/nav";
+import { useT } from "@/lib/i18n/client";
 
 function initialsOf(name: string) {
   return (
@@ -29,6 +30,7 @@ export function Sidebar({
   isSuperAdmin?: boolean;
 }) {
   const pathname = usePathname();
+  const { t } = useT();
   const items = navItems.filter(
     (item) =>
       (!item.ownerOnly || role === "OWNER") &&
@@ -85,7 +87,7 @@ export function Sidebar({
               <Icon
                 className={`h-[18px] w-[18px] ${active ? "text-brand" : ""}`}
               />
-              {item.label}
+              {t(item.tKey)}
             </Link>
           );
         })}

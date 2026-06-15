@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 
 export type NavItem = {
-  label: string;
+  label: string; // English fallback
+  tKey: string; // translation key (see lib/i18n/dictionaries)
   href: string;
   icon: LucideIcon;
   ownerOnly?: boolean;
@@ -23,16 +24,16 @@ export type NavItem = {
 };
 
 export const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, ownerOnly: true },
-  { label: "Quick Sale", href: "/quick-sale", icon: Zap },
-  { label: "Sales", href: "/sales", icon: ReceiptText },
-  { label: "Customers", href: "/customers", icon: UserCircle, ownerOnly: true },
-  { label: "Suppliers", href: "/suppliers", icon: Truck, ownerOnly: true },
-  { label: "Products", href: "/products", icon: Package },
-  { label: "Expenses", href: "/expenses", icon: Wallet, ownerOnly: true },
-  { label: "Reports", href: "/reports", icon: BarChart3, ownerOnly: true },
-  { label: "Day close", href: "/cash-close", icon: Banknote, ownerOnly: true },
-  { label: "Team", href: "/team", icon: Users, ownerOnly: true },
-  { label: "Settings", href: "/settings", icon: Settings, ownerOnly: true },
-  { label: "Admin", href: "/admin", icon: ShieldCheck, superAdminOnly: true },
+  { label: "Dashboard", tKey: "nav.dashboard", href: "/dashboard", icon: LayoutDashboard, ownerOnly: true },
+  { label: "Quick Sale", tKey: "nav.quickSale", href: "/quick-sale", icon: Zap },
+  { label: "Sales", tKey: "nav.sales", href: "/sales", icon: ReceiptText },
+  { label: "Customers", tKey: "nav.customers", href: "/customers", icon: UserCircle, ownerOnly: true },
+  { label: "Suppliers", tKey: "nav.suppliers", href: "/suppliers", icon: Truck, ownerOnly: true },
+  { label: "Products", tKey: "nav.products", href: "/products", icon: Package },
+  { label: "Expenses", tKey: "nav.expenses", href: "/expenses", icon: Wallet, ownerOnly: true },
+  { label: "Reports", tKey: "nav.reports", href: "/reports", icon: BarChart3, ownerOnly: true },
+  { label: "Day close", tKey: "nav.dayClose", href: "/cash-close", icon: Banknote, ownerOnly: true },
+  { label: "Team", tKey: "nav.team", href: "/team", icon: Users, ownerOnly: true },
+  { label: "Settings", tKey: "nav.settings", href: "/settings", icon: Settings, ownerOnly: true },
+  { label: "Admin", tKey: "nav.admin", href: "/admin", icon: ShieldCheck, superAdminOnly: true },
 ];
