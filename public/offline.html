@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Offline · ShopLedger</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #f6f7f5;
+        color: #0c1411;
+      }
+      .card {
+        width: 100%;
+        max-width: 380px;
+        text-align: center;
+        background: #fff;
+        border: 1px solid #e6e8e4;
+        border-radius: 20px;
+        padding: 32px 24px;
+        box-shadow: 0 1px 2px rgba(12, 20, 17, 0.04);
+      }
+      .badge {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 16px;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        background: #0e7c4a;
+        color: #fff;
+        font-weight: 800;
+        font-size: 22px;
+        letter-spacing: -1px;
+      }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      p { font-size: 14px; color: #5b635d; margin: 0 0 20px; line-height: 1.5; }
+      button {
+        border: 0;
+        border-radius: 12px;
+        background: #0e7c4a;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 12px 20px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="badge">SL</div>
+      <h1>You're offline</h1>
+      <p>
+        ShopLedger needs an internet connection to load this page. Your saved
+        data is safe — reconnect and try again.
+      </p>
+      <button onclick="location.reload()">Try again</button>
+    </div>
+  </body>
+</html>

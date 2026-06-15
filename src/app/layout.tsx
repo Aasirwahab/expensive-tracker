@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Bricolage_Grotesque } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getT } from "@/lib/i18n/server";
 import { dirFor } from "@/lib/i18n/config";
 import { LanguageProvider } from "@/lib/i18n/client";
+import { PwaRegister } from "@/components/shell/pwa-register";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,6 +25,11 @@ const display = Bricolage_Grotesque({
 export const metadata: Metadata = {
   title: "ShopLedger — your shop's digital notebook",
   description: "Record sales, expenses, stock, and profit in seconds.",
+  appleWebApp: { capable: true, title: "ShopLedger", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0E7C4A",
 };
 
 export default async function RootLayout({
@@ -45,6 +51,7 @@ export default async function RootLayout({
             This only ignores attribute mismatches on <body> itself, not its
             children, so real hydration issues still surface. */}
         <body className="min-h-full" suppressHydrationWarning>
+          <PwaRegister />
           <LanguageProvider locale={locale} dict={dict}>
             {children}
           </LanguageProvider>
