@@ -89,6 +89,8 @@ model User {
   stockMovements   StockMovement[]   @relation("MovementCreatedBy")
   customerPayments CustomerPayment[] @relation("PaymentCreatedBy")
   customerCharges  CustomerCharge[]  @relation("ChargeCreatedBy")
+  supplierBills    SupplierBill[]    @relation("SupplierBillCreatedBy")
+  supplierPayments SupplierPayment[] @relation("SupplierPaymentCreatedBy")
 }
 
 model Business {
@@ -118,6 +120,9 @@ model Business {
   customers         Customer[]
   customerPayments  CustomerPayment[]
   customerCharges   CustomerCharge[]
+  suppliers         Supplier[]
+  supplierBills     SupplierBill[]
+  supplierPayments  SupplierPayment[]
 }
 
 model Membership {
@@ -390,4 +395,66 @@ model AccessGrant {
   note      String? // free text, e.g. "Sold to Yousuf Trader"
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+}
+
+// ===================== Suppliers & payables =====================
+// The buying-side mirror of Customers/credit: who the shop owes money to.
+// Balance owed = Σ(bills) − Σ(payments).
+
+model Supplier {
+  id         String    @id @default(cuid())
+  businessId String
+  name       String
+  phone      String?
+  note       String?
+  isActive   Boolean   @default(true)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bills    SupplierBill[]
+  payments SupplierPayment[]
+
+  @@index([businessId, isActive])
+  @@index([businessId, phone])
+}
+
+// A bill the shop owes a supplier (a stock delivery, an old balance, etc.).
+model SupplierBill {
+  id              String   @id @default(cuid())
+  businessId      String
+  supplierId      String
+  amount          Int // whole rupees owed
+  reason          String // e.g. "Stock delivery", "Old balance"
+  billedAt        DateTime @default(now())
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  supplier  Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("SupplierBillCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([businessId, supplierId])
+  @@index([businessId, billedAt])
+}
+
+// A payment the shop makes to a supplier against what it owes.
+model SupplierPayment {
+  id              String        @id @default(cuid())
+  businessId      String
+  supplierId      String
+  amount          Int // whole rupees
+  method          PaymentMethod @default(CASH)
+  note            String?
+  paidAt          DateTime      @default(now())
+  createdByUserId String
+  createdAt       DateTime      @default(now())
+
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  supplier  Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("SupplierPaymentCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([businessId, supplierId])
+  @@index([businessId, paidAt])
 }

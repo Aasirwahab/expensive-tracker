@@ -223,6 +223,123 @@ export async function createSale(input: unknown): Promise<SaleResult> {
   }
 }
 
+const returnSchema = z.object({
+  saleItemId: z.string().min(1),
+  quantity: z.coerce.number().int().min(1).max(100_000),
+});
+
+export type ReturnResult =
+  | { ok: true; refund: number }
+  | { ok: false; error: string };
+
+/**
+ * Return some quantity of a single line from a completed sale (without voiding
+ * the whole sale): put that stock back (RETURN movement), shrink the line, and
+ * lower the sale's totals/profit so every COMPLETED-only aggregate self-corrects
+ * — the same approach as voidSale. For a credit sale the customer's tab drops
+ * automatically. Owner-only (affects revenue, profit, receivables).
+ */
+export async function returnSaleItem(input: unknown): Promise<ReturnResult> {
+  const ctx = await getActiveContext();
+  if (!ctx?.business) return { ok: false, error: "No active business." };
+  if (ctx.role !== "OWNER") {
+    return { ok: false, error: "Only the owner can take a return." };
+  }
+
+  const parsed = returnSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid return.",
+    };
+  }
+
+  const { saleItemId, quantity: r } = parsed.data;
+  const businessId = ctx.business.id;
+  const userId = ctx.user.id;
+
+  try {
+    const refund = await prisma.$transaction(async (tx) => {
+      const item = await tx.saleItem.findFirst({
+        where: { id: saleItemId, businessId },
+        include: { sale: true },
+      });
+      if (!item) throw new Error("Sale line not found.");
+
+      const sale = item.sale;
+      if (sale.status !== "COMPLETED") {
+        throw new Error("This sale is voided — nothing to return.");
+      }
+      if (r > item.quantity) {
+        throw new Error(`Only ${item.quantity} left to return on this line.`);
+      }
+
+      // Recompute the line and the sale totals after taking r units back.
+      const newItemQty = item.quantity - r;
+      const newSubtotal = sale.subtotal - r * item.unitPrice;
+      const newTotal = Math.max(newSubtotal - sale.discount, 0);
+      const newTotalCogs = sale.totalCogs - r * item.unitCost;
+      const newGrossProfit = newTotal - newTotalCogs;
+      // Never record more paid than the new total; any excess is cash refunded.
+      const newAmountPaid = Math.min(sale.amountPaid, newTotal);
+      const refundValue = sale.total - newTotal;
+
+      // Stock returns to the shelf.
+      await tx.product.update({
+        where: { id: item.productId },
+        data: { stockQuantity: { increment: r } },
+      });
+      await tx.stockMovement.create({
+        data: {
+          businessId,
+          productId: item.productId,
+          type: "RETURN",
+          quantityDelta: r, // positive: stock comes back
+          unitCost: item.unitCost,
+          referenceType: "sale",
+          referenceId: sale.id,
+          note: `Return from sale ${sale.saleNumber}`,
+          createdByUserId: userId,
+        },
+      });
+
+      await tx.saleItem.update({
+        where: { id: item.id },
+        data: {
+          quantity: newItemQty,
+          lineRevenue: newItemQty * item.unitPrice,
+          lineCogs: newItemQty * item.unitCost,
+          lineProfit: newItemQty * (item.unitPrice - item.unitCost),
+        },
+      });
+
+      await tx.sale.update({
+        where: { id: sale.id },
+        data: {
+          subtotal: newSubtotal,
+          total: newTotal,
+          totalCogs: newTotalCogs,
+          grossProfit: newGrossProfit,
+          amountPaid: newAmountPaid,
+        },
+      });
+
+      return refundValue;
+    });
+
+    revalidatePath("/sales");
+    revalidatePath("/dashboard");
+    revalidatePath("/products");
+    revalidatePath("/customers");
+    return { ok: true, refund };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Could not take the return.",
+    };
+  }
+}
+
 /**
  * Void a completed sale: put the stock back, record REVERSAL movements, and
  * mark the sale VOIDED. If it was a credit sale, the customer's outstanding

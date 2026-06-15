@@ -165,6 +165,198 @@ export async function updateProduct(
   return { error: null, ok: true };
 }
 
+const restockSchema = z.object({
+  productId: z.string().min(1),
+  quantity: z.coerce.number().int().min(1, "Enter how many you added").max(1_000_000),
+  unitCost: z.coerce.number().int().min(0).max(2_000_000_000),
+  supplierId: z.string().optional(),
+  payment: z.enum(["PAID", "CREDIT"]).optional(),
+});
+
+// Record new stock bought in (a purchase / restock). Increases stock, logs a
+// PURCHASE movement, and refreshes the cost used for profit on future sales.
+// Cost uses "latest purchase cost" — weighted-average is deferred (plan R1.1).
+// If a supplier is chosen and it's an on-credit buy, also adds the bill to that
+// supplier's tab (payables) — the buying-side mirror of a credit sale.
+export async function restockProduct(
+  _prev: ProductFormState,
+  formData: FormData,
+): Promise<ProductFormState> {
+  const ctx = await getActiveContext();
+  if (!ctx?.business) return { error: "No active business." };
+  if (ctx.role !== "OWNER") {
+    return { error: "Only the owner can add stock." };
+  }
+
+  const parsed = restockSchema.safeParse({
+    productId: formData.get("productId"),
+    quantity: formData.get("quantity"),
+    unitCost: formData.get("unitCost"),
+    supplierId: formData.get("supplierId") || undefined,
+    payment: formData.get("payment") || undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Please check the form." };
+  }
+
+  const { productId, quantity, unitCost } = parsed.data;
+  const supplierId = parsed.data.supplierId?.trim()
+    ? parsed.data.supplierId.trim()
+    : null;
+  const onCredit = parsed.data.payment === "CREDIT";
+  const businessId = ctx.business.id;
+  const userId = ctx.user.id;
+
+  const existing = await prisma.product.findFirst({
+    where: { id: productId, businessId },
+  });
+  if (!existing) return { error: "Product not found." };
+
+  let supplierName: string | null = null;
+  if (supplierId) {
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: supplierId, businessId, archivedAt: null },
+      select: { name: true },
+    });
+    if (!supplier) return { error: "Supplier not found." };
+    supplierName = supplier.name;
+  }
+
+  const recordBill = !!supplierId && onCredit;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.product.update({
+      where: { id: productId },
+      data: {
+        stockQuantity: { increment: quantity }, // atomic — no read-then-write race
+        currentCost: unitCost,
+      },
+    });
+
+    await tx.stockMovement.create({
+      data: {
+        businessId,
+        productId,
+        type: "PURCHASE",
+        quantityDelta: quantity,
+        unitCost,
+        referenceType: "purchase",
+        note: supplierName ? `Restock — ${supplierName}` : "Restock",
+        createdByUserId: userId,
+      },
+    });
+
+    // On-credit buy → add what we now owe this supplier to their tab.
+    if (recordBill) {
+      await tx.supplierBill.create({
+        data: {
+          businessId,
+          supplierId: supplierId!,
+          amount: quantity * unitCost,
+          reason: `Restock — ${existing.name}`,
+          createdByUserId: userId,
+        },
+      });
+    }
+  });
+
+  revalidatePath("/products");
+  if (recordBill) {
+    revalidatePath("/suppliers");
+    revalidatePath("/dashboard");
+  }
+  return { error: null, ok: true };
+}
+
+const adjustSchema = z.object({
+  productId: z.string().min(1),
+  reason: z.enum(["DAMAGE", "LOSS", "COUNT"]),
+  // DAMAGE/LOSS: how many to remove. COUNT: the actual counted quantity.
+  quantity: z.coerce.number().int().min(0).max(1_000_000),
+  note: z.string().trim().max(120).optional(),
+});
+
+// Record stock changing for a non-sale reason: damaged, lost/stolen, or a
+// physical count correction. Logs the matching movement and adjusts the cache.
+export async function adjustStock(
+  _prev: ProductFormState,
+  formData: FormData,
+): Promise<ProductFormState> {
+  const ctx = await getActiveContext();
+  if (!ctx?.business) return { error: "No active business." };
+  if (ctx.role !== "OWNER") {
+    return { error: "Only the owner can adjust stock." };
+  }
+
+  const parsed = adjustSchema.safeParse({
+    productId: formData.get("productId"),
+    reason: formData.get("reason"),
+    quantity: formData.get("quantity"),
+    note: formData.get("note") || undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Please check the form." };
+  }
+
+  const { productId, reason, quantity, note } = parsed.data;
+  const businessId = ctx.business.id;
+  const userId = ctx.user.id;
+
+  const existing = await prisma.product.findFirst({
+    where: { id: productId, businessId },
+  });
+  if (!existing) return { error: "Product not found." };
+
+  let delta: number;
+  let type: "DAMAGE" | "LOSS" | "ADJUSTMENT";
+  let referenceType: string;
+  let label: string;
+
+  if (reason === "COUNT") {
+    // quantity = the number physically counted; set stock to match.
+    delta = quantity - existing.stockQuantity;
+    if (delta === 0) {
+      return { error: "That count matches current stock — nothing to change." };
+    }
+    type = "ADJUSTMENT";
+    referenceType = "count";
+    label = "Stock count correction";
+  } else {
+    // DAMAGE / LOSS: quantity = how many to remove.
+    if (quantity < 1) return { error: "Enter how many to remove." };
+    if (quantity > existing.stockQuantity && !existing.allowNegativeStock) {
+      return { error: `Only ${existing.stockQuantity} in stock.` };
+    }
+    delta = -quantity;
+    type = reason;
+    referenceType = reason.toLowerCase();
+    label = reason === "DAMAGE" ? "Damaged" : "Lost / stolen";
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.product.update({
+      where: { id: productId },
+      data: { stockQuantity: { increment: delta } },
+    });
+
+    await tx.stockMovement.create({
+      data: {
+        businessId,
+        productId,
+        type,
+        quantityDelta: delta,
+        unitCost: existing.currentCost,
+        referenceType,
+        note: note ? `${label} — ${note}` : label,
+        createdByUserId: userId,
+      },
+    });
+  });
+
+  revalidatePath("/products");
+  return { error: null, ok: true };
+}
+
 // Products are archived, never hard-deleted, so past sales stay intact.
 export async function archiveProduct(
   productId: string,

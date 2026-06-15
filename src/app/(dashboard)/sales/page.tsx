@@ -48,6 +48,7 @@ export default async function SalesPage({
         customer: { select: { name: true } },
         items: {
           select: {
+            id: true,
             productNameSnapshot: true,
             quantity: true,
             unitPrice: true,
@@ -88,6 +89,7 @@ export default async function SalesPage({
       creditSettled: customerOwes == null ? null : customerOwes <= 0,
       customerOwes,
       items: s.items.map((i) => ({
+        id: i.id,
         name: i.productNameSnapshot,
         quantity: i.quantity,
         unitPrice: i.unitPrice,

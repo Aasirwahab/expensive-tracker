@@ -7,6 +7,7 @@ import {
   ProductsTable,
   type ProductRow,
 } from "@/features/products/products-table";
+import { ReorderPanel } from "@/features/products/reorder-panel";
 
 export default async function ProductsPage() {
   const ctx = await getActiveContext();
@@ -17,6 +18,15 @@ export default async function ProductsPage() {
     where: { businessId: ctx.business.id, archivedAt: null },
     orderBy: { createdAt: "desc" },
   });
+
+  // Suppliers feed the restock "on credit" picker (owner-only purchasing).
+  const suppliers = isOwner
+    ? await prisma.supplier.findMany({
+        where: { businessId: ctx.business.id, archivedAt: null },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      })
+    : [];
 
   const rows: ProductRow[] = products.map((p) => ({
     id: p.id,
@@ -33,6 +43,10 @@ export default async function ProductsPage() {
     0,
   );
 
+  const lowCount = rows.filter(
+    (r) => r.lowStockThreshold != null && r.stockQuantity <= r.lowStockThreshold,
+  ).length;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -48,6 +62,15 @@ export default async function ProductsPage() {
         </div>
       </div>
 
+      {isOwner && lowCount > 0 && (
+        <Panel
+          title={`Reorder soon (${lowCount})`}
+          subtitle="At or below their low-stock alert — top up before they run out"
+        >
+          <ReorderPanel products={rows} suppliers={suppliers} />
+        </Panel>
+      )}
+
       {isOwner && (
         <Panel
           title="Add a product"
@@ -58,7 +81,7 @@ export default async function ProductsPage() {
       )}
 
       <Panel title="Your products">
-        <ProductsTable products={rows} isOwner={isOwner} />
+        <ProductsTable products={rows} isOwner={isOwner} suppliers={suppliers} />
       </Panel>
     </div>
   );

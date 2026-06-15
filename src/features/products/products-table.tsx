@@ -1,12 +1,21 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import { Package, Pencil, Trash2, X } from "lucide-react";
+import {
+  Package,
+  PackagePlus,
+  Pencil,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from "lucide-react";
 import { formatRs, formatNumber } from "@/lib/money";
 import { thumbUrl } from "@/lib/image";
 import { ImageDropzone } from "./image-dropzone";
 import {
   updateProduct,
+  restockProduct,
+  adjustStock,
   archiveProduct,
   type ProductFormState,
 } from "./actions";
@@ -21,6 +30,8 @@ export type ProductRow = {
   lowStockThreshold: number | null;
 };
 
+export type SupplierOption = { id: string; name: string };
+
 const fieldClass =
   "w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-brand focus:bg-surface";
 const labelClass = "mb-1.5 block text-xs font-medium text-muted";
@@ -28,11 +39,15 @@ const labelClass = "mb-1.5 block text-xs font-medium text-muted";
 export function ProductsTable({
   products,
   isOwner,
+  suppliers = [],
 }: {
   products: ProductRow[];
   isOwner: boolean;
+  suppliers?: SupplierOption[];
 }) {
   const [editing, setEditing] = useState<ProductRow | null>(null);
+  const [restocking, setRestocking] = useState<ProductRow | null>(null);
+  const [adjusting, setAdjusting] = useState<ProductRow | null>(null);
 
   if (products.length === 0) {
     return (
@@ -108,7 +123,12 @@ export function ProductsTable({
                 </td>
                 {isOwner && (
                   <td className="px-2 py-3">
-                    <RowActions product={p} onEdit={() => setEditing(p)} />
+                    <RowActions
+                      product={p}
+                      onEdit={() => setEditing(p)}
+                      onRestock={() => setRestocking(p)}
+                      onAdjust={() => setAdjusting(p)}
+                    />
                   </td>
                 )}
               </tr>
@@ -120,6 +140,16 @@ export function ProductsTable({
       {editing && (
         <EditModal product={editing} onClose={() => setEditing(null)} />
       )}
+      {restocking && (
+        <RestockModal
+          product={restocking}
+          suppliers={suppliers}
+          onClose={() => setRestocking(null)}
+        />
+      )}
+      {adjusting && (
+        <AdjustModal product={adjusting} onClose={() => setAdjusting(null)} />
+      )}
     </div>
   );
 }
@@ -127,9 +157,13 @@ export function ProductsTable({
 function RowActions({
   product,
   onEdit,
+  onRestock,
+  onAdjust,
 }: {
   product: ProductRow;
   onEdit: () => void;
+  onRestock: () => void;
+  onAdjust: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -165,6 +199,24 @@ function RowActions({
     <div className="flex items-center justify-end gap-1">
       <button
         type="button"
+        onClick={onRestock}
+        aria-label="Add stock"
+        title="Add stock"
+        className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-brand-soft hover:text-brand-deep"
+      >
+        <PackagePlus className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={onAdjust}
+        aria-label="Adjust stock"
+        title="Adjust stock (damage / loss / count)"
+        className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-paper hover:text-text"
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
         onClick={onEdit}
         aria-label="Edit"
         className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-paper hover:text-text"
@@ -179,6 +231,282 @@ function RowActions({
       >
         <Trash2 className="h-4 w-4" />
       </button>
+    </div>
+  );
+}
+
+export function RestockModal({
+  product,
+  suppliers = [],
+  onClose,
+}: {
+  product: ProductRow;
+  suppliers?: SupplierOption[];
+  onClose: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(
+    restockProduct,
+    { error: null } as ProductFormState,
+  );
+
+  useEffect(() => {
+    if (state.ok) onClose();
+  }, [state, onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-surface p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="font-display text-lg font-bold tracking-tight">
+            Add stock
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-paper"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mb-4 text-sm text-muted">
+          {product.name} — {formatNumber(product.stockQuantity)} in stock now
+        </p>
+
+        <form action={formAction} className="space-y-4">
+          <input type="hidden" name="productId" value={product.id} />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass} htmlFor="restock-qty">
+                Quantity added
+              </label>
+              <input
+                id="restock-qty"
+                name="quantity"
+                type="number"
+                min="1"
+                step="1"
+                required
+                autoFocus
+                placeholder="e.g. 10"
+                className={fieldClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass} htmlFor="restock-cost">
+                Cost per unit (Rs)
+              </label>
+              <input
+                id="restock-cost"
+                name="unitCost"
+                type="number"
+                min="0"
+                step="1"
+                required
+                defaultValue={product.currentCost}
+                className={fieldClass}
+              />
+            </div>
+            {suppliers.length > 0 && (
+              <>
+                <div>
+                  <label className={labelClass} htmlFor="restock-supplier">
+                    Supplier <span className="text-muted/60">(optional)</span>
+                  </label>
+                  <select
+                    id="restock-supplier"
+                    name="supplierId"
+                    defaultValue=""
+                    className={fieldClass}
+                  >
+                    <option value="">— None —</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass} htmlFor="restock-payment">
+                    Payment
+                  </label>
+                  <select
+                    id="restock-payment"
+                    name="payment"
+                    defaultValue="PAID"
+                    className={fieldClass}
+                  >
+                    <option value="PAID">Paid now</option>
+                    <option value="CREDIT">On credit (add to tab)</option>
+                  </select>
+                </div>
+              </>
+            )}
+          </div>
+
+          <p className="text-xs text-muted">
+            This adds to your stock and sets the cost used to work out profit on
+            future sales.
+            {suppliers.length > 0
+              ? " Pick a supplier + On credit to add the bill to their tab."
+              : ""}
+          </p>
+
+          {state.error && <p className="text-sm text-loss">{state.error}</p>}
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl px-4 py-2.5 text-sm font-medium text-muted hover:bg-paper"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep disabled:opacity-60"
+            >
+              {pending ? "Adding…" : "Add stock"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AdjustModal({
+  product,
+  onClose,
+}: {
+  product: ProductRow;
+  onClose: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(
+    adjustStock,
+    { error: null } as ProductFormState,
+  );
+  const [reason, setReason] = useState<"DAMAGE" | "LOSS" | "COUNT">("DAMAGE");
+  const isCount = reason === "COUNT";
+
+  useEffect(() => {
+    if (state.ok) onClose();
+  }, [state, onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-surface p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="font-display text-lg font-bold tracking-tight">
+            Adjust stock
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-paper"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mb-4 text-sm text-muted">
+          {product.name} — {formatNumber(product.stockQuantity)} in stock now
+        </p>
+
+        <form action={formAction} className="space-y-4">
+          <input type="hidden" name="productId" value={product.id} />
+
+          <div>
+            <label className={labelClass} htmlFor="adjust-reason">
+              Reason
+            </label>
+            <select
+              id="adjust-reason"
+              name="reason"
+              value={reason}
+              onChange={(e) =>
+                setReason(e.target.value as "DAMAGE" | "LOSS" | "COUNT")
+              }
+              className={fieldClass}
+            >
+              <option value="DAMAGE">Damaged</option>
+              <option value="LOSS">Lost / stolen</option>
+              <option value="COUNT">Count correction (stock-take)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={labelClass} htmlFor="adjust-qty">
+              {isCount ? "Actual counted quantity" : "Quantity to remove"}
+            </label>
+            <input
+              id="adjust-qty"
+              name="quantity"
+              type="number"
+              min={isCount ? 0 : 1}
+              step="1"
+              required
+              autoFocus
+              placeholder={isCount ? `e.g. ${product.stockQuantity}` : "e.g. 2"}
+              className={fieldClass}
+            />
+          </div>
+
+          <div>
+            <label className={labelClass} htmlFor="adjust-note">
+              Note <span className="text-muted/60">(optional)</span>
+            </label>
+            <input
+              id="adjust-note"
+              name="note"
+              placeholder={
+                isCount ? "e.g. monthly stock-take" : "e.g. screen cracked"
+              }
+              className={fieldClass}
+            />
+          </div>
+
+          <p className="text-xs text-muted">
+            {isCount
+              ? "Sets stock to the number you actually counted."
+              : "Removes this many from stock and records the loss."}
+          </p>
+
+          {state.error && <p className="text-sm text-loss">{state.error}</p>}
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl px-4 py-2.5 text-sm font-medium text-muted hover:bg-paper"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep disabled:opacity-60"
+            >
+              {pending ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

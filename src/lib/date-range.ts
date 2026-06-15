@@ -88,3 +88,49 @@ export function currentMonthValue(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
+
+export type ResolvedDay = {
+  value: string; // "YYYY-MM-DD"
+  label: string;
+  from: Date; // 00:00:00.000 of the day (server-local)
+  to: Date; // 23:59:59.999 of the day
+};
+
+/** Resolve a single day ("YYYY-MM-DD") into its boundaries; defaults to today. */
+export function resolveDay(dateParam?: string | null): ResolvedDay {
+  const now = new Date();
+  let y = now.getFullYear();
+  let mo = now.getMonth();
+  let d = now.getDate();
+
+  const m = dateParam ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateParam) : null;
+  if (m) {
+    const yy = Number(m[1]);
+    const mm = Number(m[2]) - 1;
+    const dd = Number(m[3]);
+    const probe = new Date(yy, mm, dd);
+    // Guard against invalid dates like 2026-02-31 rolling over.
+    if (probe.getFullYear() === yy && probe.getMonth() === mm && probe.getDate() === dd) {
+      y = yy;
+      mo = mm;
+      d = dd;
+    }
+  }
+
+  const from = new Date(y, mo, d, 0, 0, 0, 0);
+  const to = new Date(y, mo, d, 23, 59, 59, 999);
+  const value = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const label = from.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  return { value, label, from, to };
+}
+
+/** Today as "YYYY-MM-DD" (server-local) — picker default and max. */
+export function todayValue(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
