@@ -3,6 +3,7 @@ import { getActiveContext } from "@/lib/auth-context";
 import { isSuperAdmin } from "@/lib/access";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
+import { BottomNav } from "@/components/shell/bottom-nav";
 
 export default async function DashboardLayout({
   children,
@@ -25,7 +26,15 @@ export default async function DashboardLayout({
       />
       <div className="ledger-bg flex min-h-screen flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6">{children}</main>
+        <main className="flex-1 px-4 pt-5 pb-24 sm:px-6 sm:pt-6 lg:pb-6">
+          {children}
+        </main>
+        <BottomNav
+          businessName={ctx.business.name}
+          businessType={ctx.business.businessType}
+          role={ctx.role}
+          isSuperAdmin={isSuperAdmin(ctx.user.email)}
+        />
       </div>
     </div>
   );

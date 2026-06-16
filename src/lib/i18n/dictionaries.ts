@@ -21,6 +21,7 @@ const en: Dict = {
   "nav.team": "Team",
   "nav.settings": "Settings",
   "nav.admin": "Admin",
+  "nav.more": "More",
 
   "topbar.newSale": "New sale",
   "topbar.subtitle": "Here's how your shop is doing.",
@@ -41,6 +42,7 @@ const si: Dict = {
   "nav.team": "කණ්ඩායම",
   "nav.settings": "සැකසුම්",
   "nav.admin": "පරිපාලක",
+  "nav.more": "තවත්",
 
   "topbar.newSale": "නව විකුණුම",
   "topbar.subtitle": "ඔබේ සාප්පුවේ තත්ත්වය මෙන්න.",
@@ -61,6 +63,7 @@ const ta: Dict = {
   "nav.team": "குழு",
   "nav.settings": "அமைப்புகள்",
   "nav.admin": "நிர்வாகி",
+  "nav.more": "மேலும்",
 
   "topbar.newSale": "புதிய விற்பனை",
   "topbar.subtitle": "உங்கள் கடையின் நிலை இதோ.",
@@ -81,6 +84,7 @@ const ar: Dict = {
   "nav.team": "الفريق",
   "nav.settings": "الإعدادات",
   "nav.admin": "المشرف",
+  "nav.more": "المزيد",
 
   "topbar.newSale": "بيع جديد",
   "topbar.subtitle": "إليك حالة متجرك.",

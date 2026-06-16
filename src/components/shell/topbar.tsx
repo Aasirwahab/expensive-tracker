@@ -18,8 +18,10 @@ export function Topbar() {
 
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-line bg-paper/85 px-4 py-3 backdrop-blur sm:px-6">
-      <div>
-        <h1 className="font-display text-xl font-bold tracking-tight">{title}</h1>
+      <div className="min-w-0">
+        <h1 className="truncate font-display text-xl font-bold tracking-tight">
+          {title}
+        </h1>
         <p className="text-xs text-muted">{t("topbar.subtitle")}</p>
       </div>
 
