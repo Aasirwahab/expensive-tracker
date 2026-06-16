@@ -111,7 +111,45 @@ export function CustomersList({
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <>
+        {/* Mobile: stacked cards so there's no sideways scrolling on phones. */}
+        <div className="space-y-2.5 sm:hidden">
+          {filtered.map((c) => (
+            <CustomerCard
+              key={c.id}
+              c={c}
+              isOpen={expanded === c.id}
+              rows={history[c.id]}
+              pending={pending}
+              confirmArchive={confirmArchive}
+              onToggle={() => toggleExpand(c.id)}
+              onPay={() => setModal({ type: "pay", customer: c })}
+              onCharge={() => setModal({ type: "charge", customer: c })}
+              onEdit={() =>
+                setModal({
+                  type: "edit",
+                  customer: {
+                    id: c.id,
+                    name: c.name,
+                    phone: c.phone,
+                    note: c.note,
+                  },
+                })
+              }
+              onAskArchive={() => setConfirmArchive(c.id)}
+              onCancelArchive={() => setConfirmArchive(null)}
+              onConfirmArchive={() => doArchive(c.id)}
+            />
+          ))}
+          {filtered.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted">
+              No customers match your search.
+            </p>
+          )}
+        </div>
+
+        {/* Desktop / tablet: full table. */}
+        <div className="hidden overflow-hidden rounded-2xl border border-line bg-surface sm:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
@@ -157,6 +195,7 @@ export function CustomersList({
             </p>
           )}
         </div>
+        </>
       )}
 
       {modal && (
@@ -266,40 +305,12 @@ function RowGroup({
             : formatRs(c.balance)}
         </td>
         <td className="px-4 py-3">
-          <div className="flex items-center justify-end gap-1">
-            <button
-              type="button"
-              onClick={onCharge}
-              title="Add money they owe you (repair, old balance, etc.)"
-              className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-text transition hover:border-loss hover:text-loss"
-            >
-              <ReceiptText className="h-3.5 w-3.5" /> Add to tab
-            </button>
-            <button
-              type="button"
-              onClick={onPay}
-              title="Record money they paid you"
-              className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-text transition hover:border-brand hover:text-brand-deep"
-            >
-              <HandCoins className="h-3.5 w-3.5" /> Pay
-            </button>
-            <button
-              type="button"
-              onClick={onEdit}
-              aria-label="Edit"
-              className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-paper hover:text-text"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={onAskArchive}
-              aria-label="Remove"
-              className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-loss/10 hover:text-loss"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          <CustomerActions
+            onCharge={onCharge}
+            onPay={onPay}
+            onEdit={onEdit}
+            onAskArchive={onAskArchive}
+          />
         </td>
       </tr>
 
@@ -335,65 +346,230 @@ function RowGroup({
       {isOpen && (
         <tr className="border-b border-line/60 bg-paper/40">
           <td colSpan={4} className="px-4 py-3">
-            <div className="mb-3">
-              <Link
-                href={`/quick-sale?customer=${c.id}`}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-ink-soft"
-              >
-                <Zap className="h-3.5 w-3.5" /> New credit sale
-              </Link>
-            </div>
-            <div className="mb-2 flex flex-wrap gap-4 text-xs text-muted">
-              <span>
-                Billed on credit{" "}
-                <span className="font-mono font-medium text-text tnum">
-                  {formatRs(c.creditBilled)}
-                </span>
-              </span>
-              {c.charged > 0 && (
-                <span>
-                  Added to tab{" "}
-                  <span className="font-mono font-medium text-text tnum">
-                    {formatRs(c.charged)}
-                  </span>
-                </span>
-              )}
-              <span>
-                Repaid{" "}
-                <span className="font-mono font-medium text-brand-deep tnum">
-                  {formatRs(c.repaid)}
-                </span>
-              </span>
-              {c.note && <span>Note: {c.note}</span>}
-            </div>
-            {rows === "loading" || rows === undefined ? (
-              <p className="py-2 text-xs text-muted">Loading history…</p>
-            ) : rows.length === 0 ? (
-              <p className="py-2 text-xs text-muted">No credit history yet.</p>
-            ) : (
-              <ul className="space-y-1">
-                {rows.map((e) => (
-                  <li
-                    key={`${e.kind}-${e.id}`}
-                    className="flex items-center justify-between text-xs"
-                  >
-                    <span className="text-muted">
-                      {e.date} · {e.label}
-                    </span>
-                    <span
-                      className={`font-mono tnum ${e.amount < 0 ? "text-brand-deep" : "text-loss"}`}
-                    >
-                      {e.amount < 0 ? "−" : "+"}
-                      {formatRs(Math.abs(e.amount))}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <CustomerDetail c={c} rows={rows} />
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+// The 4 row actions (add to tab / pay / edit / remove) — shared by the desktop
+// table row and the mobile card.
+function CustomerActions({
+  onCharge,
+  onPay,
+  onEdit,
+  onAskArchive,
+}: {
+  onCharge: () => void;
+  onPay: () => void;
+  onEdit: () => void;
+  onAskArchive: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <button
+        type="button"
+        onClick={onCharge}
+        title="Add money they owe you (repair, old balance, etc.)"
+        className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-text transition hover:border-loss hover:text-loss"
+      >
+        <ReceiptText className="h-3.5 w-3.5" /> Add to tab
+      </button>
+      <button
+        type="button"
+        onClick={onPay}
+        title="Record money they paid you"
+        className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-text transition hover:border-brand hover:text-brand-deep"
+      >
+        <HandCoins className="h-3.5 w-3.5" /> Pay
+      </button>
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label="Edit"
+        className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-paper hover:text-text"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onAskArchive}
+        aria-label="Remove"
+        className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-loss/10 hover:text-loss"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// The expanded ledger detail — shared by the desktop row and the mobile card.
+function CustomerDetail({
+  c,
+  rows,
+}: {
+  c: CustomerWithBalance;
+  rows: LedgerEntry[] | "loading" | undefined;
+}) {
+  return (
+    <>
+      <div className="mb-3">
+        <Link
+          href={`/quick-sale?customer=${c.id}`}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-ink-soft"
+        >
+          <Zap className="h-3.5 w-3.5" /> New credit sale
+        </Link>
+      </div>
+      <div className="mb-2 flex flex-wrap gap-4 text-xs text-muted">
+        <span>
+          Billed on credit{" "}
+          <span className="font-mono font-medium text-text tnum">
+            {formatRs(c.creditBilled)}
+          </span>
+        </span>
+        {c.charged > 0 && (
+          <span>
+            Added to tab{" "}
+            <span className="font-mono font-medium text-text tnum">
+              {formatRs(c.charged)}
+            </span>
+          </span>
+        )}
+        <span>
+          Repaid{" "}
+          <span className="font-mono font-medium text-brand-deep tnum">
+            {formatRs(c.repaid)}
+          </span>
+        </span>
+        {c.note && <span>Note: {c.note}</span>}
+      </div>
+      {rows === "loading" || rows === undefined ? (
+        <p className="py-2 text-xs text-muted">Loading history…</p>
+      ) : rows.length === 0 ? (
+        <p className="py-2 text-xs text-muted">No credit history yet.</p>
+      ) : (
+        <ul className="space-y-1">
+          {rows.map((e) => (
+            <li
+              key={`${e.kind}-${e.id}`}
+              className="flex items-center justify-between text-xs"
+            >
+              <span className="text-muted">
+                {e.date} · {e.label}
+              </span>
+              <span
+                className={`font-mono tnum ${e.amount < 0 ? "text-brand-deep" : "text-loss"}`}
+              >
+                {e.amount < 0 ? "−" : "+"}
+                {formatRs(Math.abs(e.amount))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+// Phone-friendly card version of one customer row.
+function CustomerCard({
+  c,
+  isOpen,
+  rows,
+  pending,
+  confirmArchive,
+  onToggle,
+  onPay,
+  onCharge,
+  onEdit,
+  onAskArchive,
+  onCancelArchive,
+  onConfirmArchive,
+}: {
+  c: CustomerWithBalance;
+  isOpen: boolean;
+  rows: LedgerEntry[] | "loading" | undefined;
+  pending: boolean;
+  confirmArchive: string | null;
+  onToggle: () => void;
+  onPay: () => void;
+  onCharge: () => void;
+  onEdit: () => void;
+  onAskArchive: () => void;
+  onCancelArchive: () => void;
+  onConfirmArchive: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-surface">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 p-3 text-left"
+      >
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-muted transition ${isOpen ? "rotate-180" : ""}`}
+        />
+        <div className="min-w-0 flex-1">
+          <span className="block font-medium">{c.name}</span>
+          {c.phone ? (
+            <span className="flex items-center gap-1 text-xs text-muted">
+              <Phone className="h-3 w-3" /> {c.phone}
+            </span>
+          ) : (
+            <span className="text-xs text-muted">{c.lastActivity ?? "—"}</span>
+          )}
+        </div>
+        <div className="shrink-0 text-right">
+          <span
+            className={`block font-mono font-semibold tnum ${balanceClass(c.balance)}`}
+          >
+            {c.balance < 0 ? `${formatRs(-c.balance)} adv` : formatRs(c.balance)}
+          </span>
+          <span className="text-[11px] text-muted">balance</span>
+        </div>
+      </button>
+
+      <div className="flex justify-end border-t border-line/60 px-3 py-2">
+        <CustomerActions
+          onCharge={onCharge}
+          onPay={onPay}
+          onEdit={onEdit}
+          onAskArchive={onAskArchive}
+        />
+      </div>
+
+      {confirmArchive === c.id && (
+        <div className="border-t border-line/60 bg-loss/5 px-3 py-2.5 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted">
+              Remove {c.name}? Their past sales stay intact.
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={pending}
+                onClick={onConfirmArchive}
+                className="font-semibold text-loss disabled:opacity-50"
+              >
+                {pending ? "…" : "Yes, remove"}
+              </button>
+              <button type="button" onClick={onCancelArchive} className="text-muted">
+                Cancel
+              </button>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {isOpen && (
+        <div className="border-t border-line/60 px-3 py-3">
+          <CustomerDetail c={c} rows={rows} />
+        </div>
+      )}
+    </div>
   );
 }
 

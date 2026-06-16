@@ -98,7 +98,31 @@ export function SalesTable({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Mobile: stacked cards so there's no sideways scrolling on phones. */}
+      <div className="space-y-2.5 sm:hidden">
+        {filtered.map((s) => {
+          const isOpen = open === s.id;
+          const units = s.items.reduce((n, i) => n + i.quantity, 0);
+          return (
+            <SaleCard
+              key={s.id}
+              sale={s}
+              isOpen={isOpen}
+              units={units}
+              showProfit={showProfit}
+              canVoid={canVoid}
+              onToggle={() => setOpen(isOpen ? null : s.id)}
+            />
+          );
+        })}
+        {filtered.length === 0 && (
+          <p className="py-8 text-center text-sm text-muted">
+            No sales match your filter.
+          </p>
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
@@ -197,85 +221,166 @@ function FragmentRow({
       {isOpen && (
         <tr className="border-b border-line/60 bg-paper/50">
           <td colSpan={colSpan} className="px-2 py-2">
-            <ul className="space-y-1 px-1">
-              {sale.items.map((i) => (
-                <li
-                  key={i.id}
-                  className="flex items-center justify-between gap-2 text-xs"
-                >
-                  <span className="text-text">
-                    {i.name}{" "}
-                    <span className="text-muted">
-                      × {formatNumber(i.quantity)}
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-2">
-                    {i.quantity > 0 ? (
-                      <span className="font-mono tnum text-muted">
-                        {formatNumber(i.quantity)} × {formatRs(i.unitPrice)} ={" "}
-                        <span className="font-medium text-text">
-                          {formatRs(i.quantity * i.unitPrice)}
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-muted">
-                        Returned
-                      </span>
-                    )}
-                    {canVoid && !voided && i.quantity > 0 && (
-                      <ReturnControl
-                        saleItemId={i.id}
-                        maxQty={i.quantity}
-                        isCredit={sale.payment === "CREDIT"}
-                      />
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {sale.payment === "CREDIT" && !voided && (
-              <div className="mt-2 flex items-center gap-1.5 px-1 text-xs">
-                {sale.creditSettled == null ? (
-                  // Staff view: just the fact it's on credit, no balance.
-                  <>
-                    <span className="rounded-full bg-ink/5 px-2 py-0.5 font-medium text-muted">
-                      On credit
-                    </span>
-                    <span className="text-muted">
-                      {sale.customerName ?? "Customer"}
-                    </span>
-                  </>
-                ) : sale.creditSettled ? (
-                  <>
-                    <span className="rounded-full bg-brand/10 px-2 py-0.5 font-medium text-brand-deep">
-                      Settled
-                    </span>
-                    <span className="text-muted">
-                      {sale.customerName ?? "Customer"} · tab clear
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="rounded-full bg-loss/10 px-2 py-0.5 font-medium text-loss">
-                      On credit
-                    </span>
-                    <span className="text-muted">
-                      {sale.customerName ?? "Customer"} · owes{" "}
-                      {formatRs(sale.customerOwes ?? 0)}
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
-            {canVoid && !voided && (
-              <div className="mt-2 flex justify-end border-t border-line/60 px-1 pt-2">
-                <VoidControl saleId={sale.id} saleNumber={sale.saleNumber} />
-              </div>
-            )}
+            <SaleDetail sale={sale} canVoid={canVoid} />
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+// The expanded detail of a sale (line items, credit status, void) — shared by
+// the desktop table row and the mobile card so the two never drift apart.
+function SaleDetail({ sale, canVoid }: { sale: SaleRow; canVoid: boolean }) {
+  const voided = sale.status === "VOIDED";
+  return (
+    <>
+      <ul className="space-y-1 px-1">
+        {sale.items.map((i) => (
+          <li
+            key={i.id}
+            className="flex items-center justify-between gap-2 text-xs"
+          >
+            <span className="text-text">
+              {i.name}{" "}
+              <span className="text-muted">× {formatNumber(i.quantity)}</span>
+            </span>
+            <span className="flex items-center gap-2">
+              {i.quantity > 0 ? (
+                <span className="font-mono tnum text-muted">
+                  {formatNumber(i.quantity)} × {formatRs(i.unitPrice)} ={" "}
+                  <span className="font-medium text-text">
+                    {formatRs(i.quantity * i.unitPrice)}
+                  </span>
+                </span>
+              ) : (
+                <span className="rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-muted">
+                  Returned
+                </span>
+              )}
+              {canVoid && !voided && i.quantity > 0 && (
+                <ReturnControl
+                  saleItemId={i.id}
+                  maxQty={i.quantity}
+                  isCredit={sale.payment === "CREDIT"}
+                />
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {sale.payment === "CREDIT" && !voided && (
+        <div className="mt-2 flex items-center gap-1.5 px-1 text-xs">
+          {sale.creditSettled == null ? (
+            // Staff view: just the fact it's on credit, no balance.
+            <>
+              <span className="rounded-full bg-ink/5 px-2 py-0.5 font-medium text-muted">
+                On credit
+              </span>
+              <span className="text-muted">
+                {sale.customerName ?? "Customer"}
+              </span>
+            </>
+          ) : sale.creditSettled ? (
+            <>
+              <span className="rounded-full bg-brand/10 px-2 py-0.5 font-medium text-brand-deep">
+                Settled
+              </span>
+              <span className="text-muted">
+                {sale.customerName ?? "Customer"} · tab clear
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="rounded-full bg-loss/10 px-2 py-0.5 font-medium text-loss">
+                On credit
+              </span>
+              <span className="text-muted">
+                {sale.customerName ?? "Customer"} · owes{" "}
+                {formatRs(sale.customerOwes ?? 0)}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      {canVoid && !voided && (
+        <div className="mt-2 flex justify-end border-t border-line/60 px-1 pt-2">
+          <VoidControl saleId={sale.id} saleNumber={sale.saleNumber} />
+        </div>
+      )}
+    </>
+  );
+}
+
+// Phone-friendly card version of one sale row.
+function SaleCard({
+  sale,
+  isOpen,
+  units,
+  showProfit,
+  canVoid,
+  onToggle,
+}: {
+  sale: SaleRow;
+  isOpen: boolean;
+  units: number;
+  showProfit: boolean;
+  canVoid: boolean;
+  onToggle: () => void;
+}) {
+  const voided = sale.status === "VOIDED";
+  return (
+    <div
+      className={`rounded-xl border border-line bg-surface ${voided ? "opacity-55" : ""}`}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 p-3 text-left"
+      >
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-muted transition ${isOpen ? "rotate-180" : ""}`}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 font-medium">
+            <span className={voided ? "line-through" : ""}>
+              #{sale.saleNumber}
+            </span>
+            {voided && (
+              <span className="rounded-full bg-loss/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-loss">
+                Voided
+              </span>
+            )}
+          </p>
+          <p className="truncate text-xs text-muted">
+            {sale.soldAt} · {sale.staff}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="font-mono text-sm font-medium tnum">
+            {formatRs(sale.total)}
+          </p>
+          <p className="text-[11px] text-muted">
+            {PAYMENT_LABEL[sale.payment] ?? sale.payment} · {formatNumber(units)}{" "}
+            item{units === 1 ? "" : "s"}
+          </p>
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="border-t border-line/60 px-2 py-2.5">
+          {showProfit && (
+            <p className="mb-2 px-1 text-xs text-muted">
+              Profit{" "}
+              <span className="font-mono font-medium text-brand-deep tnum">
+                {sale.profit != null ? formatRs(sale.profit) : "—"}
+              </span>
+            </p>
+          )}
+          <SaleDetail sale={sale} canVoid={canVoid} />
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -66,8 +66,24 @@ export function ProductsTable({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div>
+      {/* Mobile: stacked cards so there's no sideways scrolling on phones. */}
+      <div className="space-y-2.5 sm:hidden">
+        {products.map((p) => (
+          <ProductCard
+            key={p.id}
+            product={p}
+            isOwner={isOwner}
+            onEdit={() => setEditing(p)}
+            onRestock={() => setRestocking(p)}
+            onAdjust={() => setAdjusting(p)}
+          />
+        ))}
+      </div>
+
+      {/* Desktop / tablet: full table. */}
+      <div className="hidden overflow-x-auto sm:block">
+        <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
             <th className="px-2 py-2 font-medium">Product</th>
@@ -136,6 +152,7 @@ export function ProductsTable({
           })}
         </tbody>
       </table>
+      </div>
 
       {editing && (
         <EditModal product={editing} onClose={() => setEditing(null)} />
@@ -150,6 +167,84 @@ export function ProductsTable({
       {adjusting && (
         <AdjustModal product={adjusting} onClose={() => setAdjusting(null)} />
       )}
+    </div>
+  );
+}
+
+// Phone-friendly card version of one product row.
+function ProductCard({
+  product: p,
+  isOwner,
+  onEdit,
+  onRestock,
+  onAdjust,
+}: {
+  product: ProductRow;
+  isOwner: boolean;
+  onEdit: () => void;
+  onRestock: () => void;
+  onAdjust: () => void;
+}) {
+  const low =
+    p.lowStockThreshold != null && p.stockQuantity <= p.lowStockThreshold;
+  return (
+    <div className="rounded-xl border border-line bg-surface p-3">
+      <div className="flex items-center gap-3">
+        {p.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumbUrl(p.imageUrl, 96)}
+            alt=""
+            className="h-11 w-11 shrink-0 rounded-lg object-cover"
+          />
+        ) : (
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-ink/5 font-display text-sm font-bold text-ink">
+            {p.name.slice(0, 2).toUpperCase()}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{p.name}</p>
+          <p className="truncate text-xs text-muted">{p.sku ?? "No SKU"}</p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="font-mono text-sm font-medium tnum">
+            {formatRs(p.currentCost * p.stockQuantity)}
+          </p>
+          <p className="text-[11px] text-muted">stock value</p>
+        </div>
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-line/60 pt-2.5">
+        <div className="flex items-center gap-4 text-xs text-muted">
+          <span>
+            Cost{" "}
+            <span className="font-mono font-medium text-text tnum">
+              {formatRs(p.currentCost)}
+            </span>
+          </span>
+          <span>
+            Stock{" "}
+            <span
+              className={`font-mono font-medium tnum ${low ? "text-loss" : "text-text"}`}
+            >
+              {formatNumber(p.stockQuantity)}
+            </span>
+            {low && (
+              <span className="ml-1 rounded bg-loss/10 px-1 text-[10px] text-loss">
+                low
+              </span>
+            )}
+          </span>
+        </div>
+        {isOwner && (
+          <RowActions
+            product={p}
+            onEdit={onEdit}
+            onRestock={onRestock}
+            onAdjust={onAdjust}
+          />
+        )}
+      </div>
     </div>
   );
 }
