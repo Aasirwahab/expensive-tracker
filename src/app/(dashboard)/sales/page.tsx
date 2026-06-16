@@ -2,10 +2,16 @@ import Link from "next/link";
 import { getActiveContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/db";
 import { formatRs, formatNumber } from "@/lib/money";
-import { resolvePeriod, RANGE_OPTIONS, currentMonthValue } from "@/lib/date-range";
+import {
+  resolvePeriod,
+  RANGE_OPTIONS,
+  currentMonthValue,
+  todayValue,
+} from "@/lib/date-range";
 import { getCustomerBalanceMap } from "@/features/customers/queries";
 import { Panel } from "@/components/ui/panel";
 import { MonthPicker } from "@/components/ui/month-picker";
+import { DayPicker } from "@/components/ui/day-picker";
 import { SalesTable, type SaleRow } from "@/features/sales/sales-table";
 
 const dtFmt = new Intl.DateTimeFormat("en-GB", {
@@ -19,17 +25,19 @@ const dtFmt = new Intl.DateTimeFormat("en-GB", {
 export default async function SalesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; month?: string }>;
+  searchParams: Promise<{ range?: string; month?: string; date?: string }>;
 }) {
   const ctx = await getActiveContext();
   if (!ctx?.business) return null; // layout handles the redirect to onboarding
   const isOwner = ctx.role === "OWNER";
   const businessId = ctx.business.id;
 
-  // Sales history defaults to all time; tabs narrow it to today/week/month and
-  // the month picker (?month=YYYY-MM) jumps to one specific calendar month.
+  // Sales history defaults to all time; tabs narrow it to today/week/month, the
+  // month picker (?month=YYYY-MM) jumps to one calendar month, and the day
+  // picker (?date=YYYY-MM-DD) drills into a single day — handy for finding a
+  // specific sale when an incident happened. A day beats a month beats a range.
   const sp = await searchParams;
-  const { range, month } = resolvePeriod(sp.range ?? "all", sp.month);
+  const { range, month, day } = resolvePeriod(sp.range ?? "all", sp.month, sp.date);
 
   // Shared filter: owner sees all sales, staff only their own, within the range.
   const baseWhere = {
@@ -119,7 +127,7 @@ export default async function SalesPage({
                 key={r.key}
                 href={`/sales?range=${r.key}`}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  !month && range.key === r.key
+                  !month && !day && range.key === r.key
                     ? "bg-ink text-white"
                     : "text-muted hover:text-text"
                 }`}
@@ -133,6 +141,7 @@ export default async function SalesPage({
             max={currentMonthValue()}
             basePath="/sales"
           />
+          <DayPicker value={day ?? ""} max={todayValue()} basePath="/sales" />
         </div>
       </div>
 

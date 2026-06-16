@@ -70,17 +70,32 @@ export function resolveMonth(month?: string | null): ResolvedRange | null {
 }
 
 /**
- * Resolve a report period from URL params. A specific `month` ("YYYY-MM") wins
- * over a relative `range`. Returns the resolved range plus the active month
- * string (null when a relative range is in effect).
+ * Resolve a report period from URL params. Precedence: a specific `date`
+ * ("YYYY-MM-DD") wins over a `month` ("YYYY-MM"), which wins over a relative
+ * `range`. Returns the resolved range plus the active month / day strings
+ * (null when not in effect), so callers can highlight the right control.
  */
 export function resolvePeriod(
   rangeParam?: string | null,
   monthParam?: string | null,
-): { range: ResolvedRange; month: string | null } {
+  dateParam?: string | null,
+): { range: ResolvedRange; month: string | null; day: string | null } {
+  // A specific day wins over everything else.
+  if (dateParam) {
+    const d = resolveDay(dateParam);
+    // resolveDay falls back to today on a bad value; only treat the param as an
+    // active day filter when it parsed to exactly the requested date.
+    if (d.value === dateParam) {
+      return {
+        range: { key: "today", label: d.label, from: d.from, to: d.to },
+        month: null,
+        day: d.value,
+      };
+    }
+  }
   const monthPeriod = resolveMonth(monthParam);
-  if (monthPeriod) return { range: monthPeriod, month: monthParam! };
-  return { range: resolveRange(rangeParam ?? undefined), month: null };
+  if (monthPeriod) return { range: monthPeriod, month: monthParam!, day: null };
+  return { range: resolveRange(rangeParam ?? undefined), month: null, day: null };
 }
 
 /** The current month as "YYYY-MM" (server-local) — useful as a picker max. */
