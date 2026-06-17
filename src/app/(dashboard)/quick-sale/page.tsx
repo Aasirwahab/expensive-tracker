@@ -38,6 +38,8 @@ export default async function QuickSalePage({
     currentCost: isOwner ? p.currentCost : 0,
     stockQuantity: p.stockQuantity,
     allowNegativeStock: p.allowNegativeStock,
+    priceMin: p.priceMin,
+    priceMax: p.priceMax,
   }));
 
   return (

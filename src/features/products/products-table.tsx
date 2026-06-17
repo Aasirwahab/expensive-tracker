@@ -9,7 +9,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { formatRs, formatNumber } from "@/lib/money";
+import { formatRs, formatNumber, formatPriceRange } from "@/lib/money";
 import { thumbUrl } from "@/lib/image";
 import { ImageDropzone } from "./image-dropzone";
 import {
@@ -28,6 +28,8 @@ export type ProductRow = {
   currentCost: number;
   stockQuantity: number;
   lowStockThreshold: number | null;
+  priceMin: number | null;
+  priceMax: number | null;
 };
 
 export type SupplierOption = { id: string; name: string };
@@ -89,6 +91,7 @@ export function ProductsTable({
             <th className="px-2 py-2 font-medium">Product</th>
             <th className="px-2 py-2 font-medium">SKU</th>
             <th className="px-2 py-2 text-right font-medium">Cost</th>
+            <th className="px-2 py-2 text-right font-medium">Sells</th>
             <th className="px-2 py-2 text-right font-medium">Stock</th>
             <th className="px-2 py-2 text-right font-medium">Stock value</th>
             {isOwner && (
@@ -123,6 +126,9 @@ export function ProductsTable({
                 <td className="px-2 py-3 text-muted">{p.sku ?? "—"}</td>
                 <td className="px-2 py-3 text-right font-mono tnum">
                   {formatRs(p.currentCost)}
+                </td>
+                <td className="whitespace-nowrap px-2 py-3 text-right text-xs text-muted">
+                  {formatPriceRange(p.priceMin, p.priceMax) ?? "—"}
                 </td>
                 <td className="px-2 py-3 text-right font-mono tnum">
                   <span className={low ? "text-loss" : ""}>
@@ -187,6 +193,7 @@ function ProductCard({
 }) {
   const low =
     p.lowStockThreshold != null && p.stockQuantity <= p.lowStockThreshold;
+  const sells = formatPriceRange(p.priceMin, p.priceMax);
   return (
     <div className="rounded-xl border border-line bg-surface p-3">
       <div className="flex items-center gap-3">
@@ -214,35 +221,42 @@ function ProductCard({
         </div>
       </div>
 
-      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-line/60 pt-2.5">
-        <div className="flex items-center gap-4 text-xs text-muted">
-          <span>
-            Cost{" "}
-            <span className="font-mono font-medium text-text tnum">
-              {formatRs(p.currentCost)}
-            </span>
-          </span>
-          <span>
-            Stock{" "}
-            <span
-              className={`font-mono font-medium tnum ${low ? "text-loss" : "text-text"}`}
-            >
-              {formatNumber(p.stockQuantity)}
-            </span>
-            {low && (
-              <span className="ml-1 rounded bg-loss/10 px-1 text-[10px] text-loss">
-                low
+      <div className="mt-2.5 border-t border-line/60 pt-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-4 text-xs text-muted">
+            <span>
+              Cost{" "}
+              <span className="font-mono font-medium text-text tnum">
+                {formatRs(p.currentCost)}
               </span>
-            )}
-          </span>
+            </span>
+            <span>
+              Stock{" "}
+              <span
+                className={`font-mono font-medium tnum ${low ? "text-loss" : "text-text"}`}
+              >
+                {formatNumber(p.stockQuantity)}
+              </span>
+              {low && (
+                <span className="ml-1 rounded bg-loss/10 px-1 text-[10px] text-loss">
+                  low
+                </span>
+              )}
+            </span>
+          </div>
+          {isOwner && (
+            <RowActions
+              product={p}
+              onEdit={onEdit}
+              onRestock={onRestock}
+              onAdjust={onAdjust}
+            />
+          )}
         </div>
-        {isOwner && (
-          <RowActions
-            product={p}
-            onEdit={onEdit}
-            onRestock={onRestock}
-            onAdjust={onAdjust}
-          />
+        {sells && (
+          <p className="mt-1.5 text-xs text-muted">
+            Sells <span className="font-medium text-text">{sells}</span>
+          </p>
         )}
       </div>
     </div>
@@ -723,6 +737,36 @@ function EditModal({
                   defaultValue={product.lowStockThreshold ?? ""}
                   className={fieldClass}
                 />
+              </div>
+              <div className="col-span-2">
+                <span className={labelClass}>
+                  Selling price range{" "}
+                  <span className="text-muted/60">(optional)</span>
+                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    name="priceMin"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    defaultValue={product.priceMin ?? ""}
+                    placeholder="From — e.g. 5000"
+                    className={fieldClass}
+                    aria-label="Selling price from"
+                  />
+                  <input
+                    name="priceMax"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    defaultValue={product.priceMax ?? ""}
+                    placeholder="To — e.g. 7000"
+                    className={fieldClass}
+                    aria-label="Selling price to"
+                  />
+                </div>
               </div>
             </div>
           </div>

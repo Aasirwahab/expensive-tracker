@@ -169,7 +169,9 @@ model Product {
   description        String?
   imageUrl           String? // product photo (data URL for the pilot; object storage later)
   currentCost        Int       @default(0) // whole rupees
-  defaultPrice       Int? // whole rupees
+  defaultPrice       Int? // whole rupees (legacy, unused)
+  priceMin           Int? // selling-price guide, low end (optional, whole rupees)
+  priceMax           Int? // selling-price guide, high end (optional, whole rupees)
   stockQuantity      Int       @default(0) // cache; stock_movements is source of truth
   lowStockThreshold  Int?
   allowNegativeStock Boolean   @default(false)

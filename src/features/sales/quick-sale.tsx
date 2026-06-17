@@ -12,7 +12,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { formatRs } from "@/lib/money";
+import { formatRs, formatPriceRange } from "@/lib/money";
 import { thumbUrl } from "@/lib/image";
 import { createSale, type SaleResult } from "./actions";
 import { quickCreateCustomer } from "@/features/customers/actions";
@@ -25,6 +25,8 @@ export type SaleProduct = {
   currentCost: number; // 0 for staff (cost is owner-only)
   stockQuantity: number;
   allowNegativeStock: boolean;
+  priceMin: number | null; // selling-price guide (optional)
+  priceMax: number | null;
 };
 
 export type PickerCustomer = {
@@ -50,6 +52,8 @@ type CartLine = {
   allowNeg: boolean;
   quantity: number;
   unitPrice: number;
+  priceMin: number | null;
+  priceMax: number | null;
 };
 
 type ReceiptData = {
@@ -143,6 +147,8 @@ export function QuickSale({
           allowNeg: p.allowNegativeStock,
           quantity: 1,
           unitPrice: 0,
+          priceMin: p.priceMin,
+          priceMax: p.priceMax,
         },
       ];
     });
@@ -282,6 +288,7 @@ export function QuickSale({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
             {filtered.map((p) => {
               const out = !p.allowNegativeStock && p.stockQuantity <= 0;
+              const range = formatPriceRange(p.priceMin, p.priceMax);
               return (
                 <button
                   key={p.id}
@@ -311,6 +318,11 @@ export function QuickSale({
                     <p className="text-xs text-muted">
                       {out ? "Out of stock" : `${p.stockQuantity} in stock`}
                     </p>
+                    {range && (
+                      <p className="mt-0.5 truncate text-xs font-medium text-brand-deep">
+                        {range}
+                      </p>
+                    )}
                   </div>
                 </button>
               );
@@ -424,6 +436,11 @@ export function QuickSale({
                       {formatRs(l.quantity * l.unitPrice)}
                     </span>
                   </div>
+                  {formatPriceRange(l.priceMin, l.priceMax) && (
+                    <p className="mt-0.5 text-[11px] text-muted">
+                      Guide: {formatPriceRange(l.priceMin, l.priceMax)}
+                    </p>
+                  )}
                 </div>
               </li>
             ))}

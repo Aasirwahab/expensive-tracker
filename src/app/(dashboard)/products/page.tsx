@@ -36,6 +36,8 @@ export default async function ProductsPage() {
     currentCost: p.currentCost,
     stockQuantity: p.stockQuantity,
     lowStockThreshold: p.lowStockThreshold,
+    priceMin: p.priceMin,
+    priceMax: p.priceMax,
   }));
 
   const stockValue = products.reduce(

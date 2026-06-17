@@ -19,6 +19,15 @@ function readImage(formData: FormData): string | null {
 }
 
 const optionalThreshold = z.coerce.number().int().min(0).max(1_000_000).optional();
+const optionalPrice = z.coerce.number().int().min(0).max(2_000_000_000).optional();
+
+// Selling-price guide must read low-to-high when both ends are given.
+function checkPriceRange(min?: number, max?: number): string | null {
+  if (min != null && max != null && min > max) {
+    return "Selling price 'from' can't be more than 'to'.";
+  }
+  return null;
+}
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Product name is required").max(80),
@@ -26,6 +35,8 @@ const createSchema = z.object({
   currentCost: z.coerce.number().int().min(0).max(2_000_000_000),
   openingStock: z.coerce.number().int().min(0).max(1_000_000),
   lowStockThreshold: optionalThreshold,
+  priceMin: optionalPrice,
+  priceMax: optionalPrice,
 });
 
 export async function createProduct(
@@ -45,10 +56,14 @@ export async function createProduct(
     currentCost: formData.get("currentCost"),
     openingStock: formData.get("openingStock") || 0,
     lowStockThreshold: formData.get("lowStockThreshold") || undefined,
+    priceMin: formData.get("priceMin") || undefined,
+    priceMax: formData.get("priceMax") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Please check the form." };
   }
+  const rangeError = checkPriceRange(parsed.data.priceMin, parsed.data.priceMax);
+  if (rangeError) return { error: rangeError };
 
   const { name, sku, currentCost, openingStock, lowStockThreshold } =
     parsed.data;
@@ -65,6 +80,8 @@ export async function createProduct(
         currentCost,
         stockQuantity: openingStock,
         lowStockThreshold: lowStockThreshold ?? null,
+        priceMin: parsed.data.priceMin ?? null,
+        priceMax: parsed.data.priceMax ?? null,
       },
     });
 
@@ -95,6 +112,8 @@ const updateSchema = z.object({
   currentCost: z.coerce.number().int().min(0).max(2_000_000_000),
   stockQuantity: z.coerce.number().int().min(0).max(1_000_000),
   lowStockThreshold: optionalThreshold,
+  priceMin: optionalPrice,
+  priceMax: optionalPrice,
 });
 
 export async function updateProduct(
@@ -115,10 +134,14 @@ export async function updateProduct(
     currentCost: formData.get("currentCost"),
     stockQuantity: formData.get("stockQuantity") || 0,
     lowStockThreshold: formData.get("lowStockThreshold") || undefined,
+    priceMin: formData.get("priceMin") || undefined,
+    priceMax: formData.get("priceMax") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Please check the form." };
   }
+  const rangeError = checkPriceRange(parsed.data.priceMin, parsed.data.priceMax);
+  if (rangeError) return { error: rangeError };
 
   const { productId, name, sku, currentCost, stockQuantity, lowStockThreshold } =
     parsed.data;
@@ -142,6 +165,8 @@ export async function updateProduct(
         stockQuantity,
         imageUrl,
         lowStockThreshold: lowStockThreshold ?? null,
+        priceMin: parsed.data.priceMin ?? null,
+        priceMax: parsed.data.priceMax ?? null,
       },
     });
 

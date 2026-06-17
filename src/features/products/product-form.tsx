@@ -18,9 +18,12 @@ export function ProductForm() {
   const formRef = useRef<HTMLFormElement>(null);
   const [imageUrl, setImageUrl] = useState("");
 
+  // Clear the form + photo preview after a successful create. This is a
+  // deliberate one-shot reset driven by the action result, not a render loop.
   useEffect(() => {
     if (state.ok) {
       formRef.current?.reset();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setImageUrl("");
     }
   }, [state]);
@@ -104,6 +107,38 @@ export function ProductForm() {
               placeholder="e.g. 5 — warn when stock drops to this"
               className={fieldClass}
             />
+          </div>
+          <div className="sm:col-span-2">
+            <span className={labelClass}>
+              Selling price range{" "}
+              <span className="text-muted/60">(optional)</span>
+            </span>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                name="priceMin"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                placeholder="From — e.g. 5000"
+                className={fieldClass}
+                aria-label="Selling price from"
+              />
+              <input
+                name="priceMax"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                placeholder="To — e.g. 7000"
+                className={fieldClass}
+                aria-label="Selling price to"
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              A guide for what this sells for — shown in Quick Sale. Leave blank
+              if you&apos;re not sure.
+            </p>
           </div>
         </div>
       </div>
